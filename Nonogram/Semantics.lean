@@ -82,6 +82,29 @@ def row (solution : Solution rows cols) (r : Fin rows) : Line cols Bool :=
 def col (solution : Solution rows cols) (c : Fin cols) : Line rows Bool :=
   fun r => solution r c
 
+/-- Derive the clue for one row of a completed solution. -/
+def rowClue (solution : Solution rows cols) (r : Fin rows) : Clue :=
+  (solution.row r).runs
+
+/-- Derive the clue for one column of a completed solution. -/
+def colClue (solution : Solution rows cols) (c : Fin cols) : Clue :=
+  (solution.col c).runs
+
+/-- Derive all row and column clues from a completed solution. -/
+def toPuzzle (solution : Solution rows cols) : Puzzle rows cols where
+  rowClues := solution.rowClue
+  colClues := solution.colClue
+
+@[simp] theorem toPuzzle_rowClues
+    (solution : Solution rows cols)
+    (row : Fin rows) :
+    solution.toPuzzle.rowClues row = solution.rowClue row := rfl
+
+@[simp] theorem toPuzzle_colClues
+    (solution : Solution rows cols)
+    (column : Fin cols) :
+    solution.toPuzzle.colClues column = solution.colClue column := rfl
+
 /-- A solution satisfies all row and column clues. -/
 structure Satisfies
     (solution : Solution rows cols)
@@ -102,6 +125,12 @@ instance (solution : Solution rows cols) (puzzle : Puzzle rows cols) :
       isFalse fun h => hCol h.col
   else
     isFalse fun h => hRow h.row
+
+/-- A completed solution satisfies the clues derived from itself. -/
+theorem satisfies_toPuzzle (solution : Solution rows cols) :
+    solution.Satisfies solution.toPuzzle where
+  row _ := rfl
+  col _ := rfl
 
 end Solution
 

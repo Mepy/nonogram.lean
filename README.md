@@ -4,21 +4,38 @@ A finite Nonogram model in Lean 4, including typed boards, clues, board renderin
 with clues, solutions, puzzle validity, candidate states, and contracts for
 deduction rules.
 
-Define a puzzle with literal row and column clues using `nonogram`. The number
-of entries in each section determines the dimensions, so the annotation below
-is optional. Use `-` (or `[]`) for a line with no black cells:
+Define a puzzle from literal row and column clues with `nonogram from clues`.
+The number of entries in each section determines the dimensions, so the
+annotation below is optional. A bare positive number is a single-block clue;
+use `[1 1]` for multiple blocks. `[]`, `-`, and bare `0` all mean an empty clue:
 
 ```lean
-def crossPuzzle : Puzzle 5 5 := nonogram {
-  rows: [[1], [1], [5], [1], [1]],
-  columns: [[1], [1], [5], [1], [1]]
-}
+def crossPuzzle : Puzzle 5 5 := nonogram from clues
+  rows: 1 1 5 1 1
+  cols: 1 1 5 1 1
 ```
 
 Literal clues are checked at compile time: every block must be positive and
 each clue must fit its row or column. For computed inputs,
 `Puzzle.ofClueLists rows columns` constructs a puzzle whose dimensions are the
 two list lengths.
+
+A completed bitmap can generate both sets of clues directly. Rows need no
+quotes or commas; `#` and `■` are black, while `_`, `.`, and `×` are white:
+
+```lean
+def crossPuzzle : Puzzle 5 5 := nonogram from solution
+  __#__
+  __#__
+  #####
+  __#__
+  __#__
+```
+
+For an existing `solution : Solution rows cols`, `solution.rowClue r` and
+`solution.colClue c` derive individual clues, and `solution.toPuzzle` derives
+the complete puzzle. The solution satisfies that generated puzzle by
+`solution.satisfies_toPuzzle`.
 
 Solve a concrete puzzle as a theorem with the `nono` term elaborator:
 
