@@ -6,6 +6,22 @@ open Lean Elab Term Meta
 namespace Nonogram
 
 declare_syntax_cat nonogramStep
+declare_syntax_cat nonogramStepLine
+
+/-- One row or column group in a combined `line` command. -/
+syntax ident num* : nonogramStepLine
+
+/-- Select every row or column in one group of a combined `line` command. -/
+syntax ident "*" : nonogramStepLine
+
+/-- Process every row followed by every column once. -/
+syntax "*" : nonogramStepLine
+
+/-- Repeat `*` until a complete pass leaves the board unchanged. -/
+syntax "**" : nonogramStepLine
+
+/-- Separate commands in a `nono` block; line breaks remain valid separators. -/
+syntax (name := nonogramSeparator) ";" : nonogramStep
 
 /-- `fill i j` sets `"■"` (`Cell.filled`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramFill) "fill" num num : nonogramStep
@@ -17,11 +33,12 @@ syntax (name := nonogramCross) "cross" num num : nonogramStep
 syntax (name := nonogramClear) "clear" num num : nonogramStep
 
 /--
-`line row i` or `line col j` enumerates and intersects all candidates for one
-1-based line. The direction is parsed as an identifier to avoid reserving
-`row` and `col` as global Lean keywords.
+Process a sequence of row and column groups from left to right. For example,
+`line row 1 2 col 3 row 4` lets each group use the board updated by the groups
+before it. A group with no indices is a no-op. Directions are identifiers to
+avoid reserving `row` and `col` as global Lean keywords.
 -/
-syntax (name := nonogramLineSolver) "line" ident num : nonogramStep
+syntax (name := nonogramLineSolver) "line" nonogramStepLine* : nonogramStep
 
 /-- Check the completed board against every clue and finish the proof. -/
 syntax (name := nonogramGram) "gram" : nonogramStep
@@ -39,7 +56,7 @@ private def boardWidget : Widget.Module where
     export default function NonogramBoard(props) {
       return React.createElement('pre', {
         style: {
-          margin: 0,
+          margin: '0 0 1.4em 0',
           overflowX: 'auto',
           lineHeight: 1.4,
           fontFamily: 'var(--vscode-editor-font-family, monospace)',
@@ -101,8 +118,101 @@ private def showBoard
 private def setMessage (cell : Cell) (row col : Nat) : String :=
   s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
 
-private def lineSolverMessage (direction : String) (index candidateCount : Nat) : String :=
-  s!"line {direction} {index + 1}: {candidateCount} candidate(s)"
+private structure SolvedLine where
+  index : Nat
+  candidateCount : Nat
+
+private def lineSolverReport (messages : Array String) : Option String :=
+  if messages.isEmpty then none else some (String.intercalate "\n" messages.toList)
+
+private def pushCompactLineReport
+    (messages : Array String)
+    (direction : String)
+    (lines : Array SolvedLine) : Array String :=
+  if lines.isEmpty then
+    messages
+  else
+    let indices := lines.map fun solved => toString (solved.index + 1)
+    let candidateCounts := lines.map fun solved => toString solved.candidateCount
+    messages.push <| s!"line {direction} {String.intercalate ", " indices.toList}: " ++
+      s!"{String.intercalate ", " candidateCounts.toList} candidate(s)"
+
+private def allIndices (length : Nat) : Array (Fin length) :=
+  (List.ofFn fun i : Fin length => i).toArray
+
+private def solveRows
+    (puzzle : Puzzle rows cols)
+    (initialBoard : Board rows cols)
+    (indices : Array (Fin rows)) :
+    Except (Fin rows) (Board rows cols × Array SolvedLine) := do
+  let mut board := initialBoard
+  let mut lines := #[]
+  for row in indices do
+    let some result := LineSolver.solve (puzzle.rowClues row) (board.row row)
+      | throw row
+    board := board.replaceRow row result.line
+    lines := lines.push ⟨row.val, result.candidateCount⟩
+  return (board, lines)
+
+private def solveCols
+    (puzzle : Puzzle rows cols)
+    (initialBoard : Board rows cols)
+    (indices : Array (Fin cols)) :
+    Except (Fin cols) (Board rows cols × Array SolvedLine) := do
+  let mut board := initialBoard
+  let mut lines := #[]
+  for col in indices do
+    let some result := LineSolver.solve (puzzle.colClues col) (board.col col)
+      | throw col
+    board := board.replaceCol col result.line
+    lines := lines.push ⟨col.val, result.candidateCount⟩
+  return (board, lines)
+
+private inductive LineSolverError (rows cols : Nat) where
+  | row (index : Fin rows)
+  | col (index : Fin cols)
+
+private structure SolvedAllLines (rows cols : Nat) where
+  board : Board rows cols
+  rows : Array SolvedLine
+  cols : Array SolvedLine
+
+private def solveAllLines
+    (puzzle : Puzzle rows cols)
+    (board : Board rows cols) :
+    Except (LineSolverError rows cols) (SolvedAllLines rows cols) :=
+  match solveRows puzzle board (allIndices rows) with
+  | .error row => .error (.row row)
+  | .ok (rowBoard, rowLines) =>
+      match solveCols puzzle rowBoard (allIndices cols) with
+      | .error col => .error (.col col)
+      | .ok (newBoard, colLines) => .ok {
+          board := newBoard
+          rows := rowLines
+          cols := colLines
+        }
+
+private def boardsEqual (left right : Board rows cols) : Bool :=
+  (List.ofFn fun row =>
+    (List.ofFn fun col => left.get row col == right.get row col).all id).all id
+
+private def solveToFixedPoint
+    (puzzle : Puzzle rows cols)
+    (initialBoard : Board rows cols) :
+    Except (LineSolverError rows cols) (Board rows cols × Nat) :=
+  loop (rows * cols + 1) initialBoard 0
+where
+  loop : Nat -> Board rows cols -> Nat ->
+      Except (LineSolverError rows cols) (Board rows cols × Nat)
+    | 0, board, passes => .ok (board, passes)
+    | fuel + 1, board, passes =>
+        match solveAllLines puzzle board with
+        | .error error => .error error
+        | .ok result =>
+            if boardsEqual result.board board then
+              .ok (result.board, passes + 1)
+            else
+              loop fuel result.board (passes + 1)
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -131,9 +241,10 @@ private def elabNono
   let mut finished := false
   showBoard goal puzzle board nonoRef
   for step in steps do
-    if finished then
+    if finished && !step.raw.isOfKind ``nonogramSeparator then
       throwErrorAt step "`gram` must be the final command in a `nono` block"
     match step with
+    | `(nonogramStep| ;) => pure ()
     | `(nonogramStep| fill $rowStx:num $colStx:num) =>
         let r ← getCoordinate "row" goal.rows rowStx
         let c ← getCoordinate "column" goal.cols colStx
@@ -149,25 +260,67 @@ private def elabNono
         let c ← getCoordinate "column" goal.cols colStx
         board := board.set r c .unknown
         showBoard goal puzzle board step (some (setMessage .unknown r.val c.val))
-    | `(nonogramStep| line $direction:ident $indexStx:num) =>
-        if direction.getId == `row then
-          let row ← getCoordinate "row" goal.rows indexStx
-          let some result := LineSolver.solve (puzzle.rowClues row) (board.row row)
-            | throwErrorAt step
-                "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-          board := board.replaceRow row result.line
-          showBoard goal puzzle board step
-            (some (lineSolverMessage "row" row.val result.candidateCount))
-        else if direction.getId == `col then
-          let col ← getCoordinate "column" goal.cols indexStx
-          let some result := LineSolver.solve (puzzle.colClues col) (board.col col)
-            | throwErrorAt step
-                "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
-          board := board.replaceCol col result.line
-          showBoard goal puzzle board step
-            (some (lineSolverMessage "col" col.val result.candidateCount))
-        else
-          throwErrorAt direction "expected `row` or `col` after `line`"
+    | `(nonogramStep| line $groups:nonogramStepLine*) =>
+        let mut messages := #[]
+        for group in groups do
+          match group with
+          | `(nonogramStepLine| $direction:ident $indexStxs:num*) =>
+              if direction.getId == `row then
+                let rows ← indexStxs.mapM (getCoordinate "row" goal.rows)
+                match solveRows puzzle board rows with
+                | .error row => throwErrorAt group
+                      "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+                | .ok (newBoard, lines) =>
+                    board := newBoard
+                    messages := pushCompactLineReport messages "row" lines
+              else if direction.getId == `col then
+                let cols ← indexStxs.mapM (getCoordinate "column" goal.cols)
+                match solveCols puzzle board cols with
+                | .error col => throwErrorAt group
+                      "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+                | .ok (newBoard, lines) =>
+                    board := newBoard
+                    messages := pushCompactLineReport messages "col" lines
+              else
+                throwErrorAt direction "expected `row` or `col` after `line`"
+          | `(nonogramStepLine| $direction:ident *) =>
+              if direction.getId == `row then
+                match solveRows puzzle board (allIndices goal.rows) with
+                | .error row => throwErrorAt group
+                      "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+                | .ok (newBoard, lines) =>
+                    board := newBoard
+                    messages := pushCompactLineReport messages "row" lines
+              else if direction.getId == `col then
+                match solveCols puzzle board (allIndices goal.cols) with
+                | .error col => throwErrorAt group
+                      "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+                | .ok (newBoard, lines) =>
+                    board := newBoard
+                    messages := pushCompactLineReport messages "col" lines
+              else
+                throwErrorAt direction "expected `row` or `col` after `line`"
+          | `(nonogramStepLine| *) =>
+              match solveAllLines puzzle board with
+              | .error (.row row) => throwErrorAt group
+                    "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+              | .error (.col col) => throwErrorAt group
+                    "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+              | .ok result =>
+                  board := result.board
+                  messages := pushCompactLineReport messages "row" result.rows
+                  messages := pushCompactLineReport messages "col" result.cols
+          | `(nonogramStepLine| **) =>
+              match solveToFixedPoint puzzle board with
+              | .error (.row row) => throwErrorAt group
+                    "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+              | .error (.col col) => throwErrorAt group
+                    "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+              | .ok (newBoard, passes) =>
+                  board := newBoard
+                  messages := messages.push s!"line **: stabilized after {passes} pass(es)"
+          | _ => throwUnsupportedSyntax
+        showBoard goal puzzle board step (lineSolverReport messages)
     | `(nonogramStep| gram) =>
         let cells := cellsOfBoard board
         let unknownCount : Nat := cells.foldl (fun count cell =>
@@ -175,9 +328,9 @@ private def elabNono
         unless unknownCount == 0 do
           showBoard goal puzzle board step
           throwErrorAt step "cannot run `gram`: {unknownCount} cells are still unknown"
-        showBoard goal puzzle board step
         let solution : Solution goal.rows goal.cols := fun r c => board.get r c == .filled
         unless decide (solution.Satisfies puzzle) do
+          showBoard goal puzzle board step
           throwErrorAt step "`gram` failed: the completed board does not satisfy the clues"
         finished := true
     | _ => throwUnsupportedSyntax

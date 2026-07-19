@@ -22,13 +22,26 @@ example : xPuzzle.Solvable := nono
   gram
 
 example : xPuzzle.Solvable := nono
-  line row 1
-  line row 2
-  line row 3
-  line col 1
-  line col 2
-  line col 3
+  line
+  line row
+  line col
+  line *
   gram
+
+example : xPuzzle.Solvable := nono
+  line row *
+  line col *
+  gram
+
+example : xPuzzle.Solvable := nono
+  line **
+  gram
+
+example : xPuzzle.Solvable := nono
+  line row 1 * row 2
+  gram
+
+example : xPuzzle.Solvable := nono line row 1 3 line col 2 row 2 gram
 
 /-- Row 3 initially has the three candidates `■■■××`, `×■■■×`, and `××■■■`. -/
 def overlapPuzzle : Puzzle 3 5 where
@@ -46,12 +59,6 @@ example :
   native_decide
 
 example : overlapPuzzle.Solvable := nono
-  line row 3
-  line row 1
-  line row 2
-  line col 1
-  line col 2
-  line col 3
-  line col 4
-  line col 5
+  line row 3 1 2
+  line col 1 2 3 4 5
   gram
