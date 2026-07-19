@@ -89,6 +89,20 @@ structure Satisfies
   row : forall r, Line.Satisfies (puzzle.rowClues r) (solution.row r)
   col : forall c, Line.Satisfies (puzzle.colClues c) (solution.col c)
 
+instance (clue : Clue) (line : Line length Bool) :
+    Decidable (Line.Satisfies clue line) :=
+  inferInstanceAs (Decidable (line.runs = clue))
+
+instance (solution : Solution rows cols) (puzzle : Puzzle rows cols) :
+    Decidable (solution.Satisfies puzzle) :=
+  if hRow : forall r, Line.Satisfies (puzzle.rowClues r) (solution.row r) then
+    if hCol : forall c, Line.Satisfies (puzzle.colClues c) (solution.col c) then
+      isTrue ⟨hRow, hCol⟩
+    else
+      isFalse fun h => hCol h.col
+  else
+    isFalse fun h => hRow h.row
+
 end Solution
 
 namespace Puzzle
