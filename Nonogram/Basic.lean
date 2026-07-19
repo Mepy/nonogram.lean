@@ -16,9 +16,9 @@ namespace Cell
 
 /-- A compact symbol used by the board renderer. -/
 def symbol : Cell -> String
-  | .unknown => "?"
-  | .filled => "■"
-  | .crossed => "×"
+  | .unknown => " " -- ? -- ☐
+  | .filled => "■" -- ■ -- ◼
+  | .crossed => "×" -- × -- ☒
 
 instance : Repr Cell where
   reprPrec cell _ := Std.Format.text cell.symbol
