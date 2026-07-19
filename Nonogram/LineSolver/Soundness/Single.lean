@@ -1,6 +1,7 @@
 import Nonogram.LineSolver.Single
 import Nonogram.LineSolver.Soundness.Single.Naive
 import Nonogram.LineSolver.Soundness.Single.Placement
+import Nonogram.LineSolver.Soundness.Single.Pruned
 
 namespace Nonogram
 namespace LineSolver
@@ -12,10 +13,10 @@ enumeration proofs live under `Soundness.Single`.
 
 open Single.Internal
 
-/-- The default clue-directed implementation meets the declarative specification. -/
+/-- The default compatibility-pruned implementation meets the specification. -/
 theorem solve_exact (clue : Clue) (line : Line length Cell) :
     Spec.ExactOutcome clue line (solve clue line) := by
-  exact Single.Placement.solve_exact clue line
+  exact Single.Pruned.solve_exact clue line
 
 private theorem intersect_compatible_of_mem
     {candidate : Line length Bool}
@@ -88,7 +89,7 @@ theorem solve_sound
     simp only [Option.some.injEq] at hSolve
     subst result
     exact intersect_compatible_of_mem <|
-      Single.Placement.mem_candidates_iff_candidate.mpr
+      Single.Pruned.mem_candidates_iff_candidate.mpr
         ⟨hSatisfies, hCompatible⟩
 
 /-- A successful solve preserves all information already known in the line. -/
@@ -111,7 +112,7 @@ theorem solve_refines
     apply intersect_refines
     · simpa using hNonempty
     · intro candidate hMem
-      exact (Single.Placement.mem_candidates_iff_candidate.mp hMem).2
+      exact (Single.Pruned.mem_candidates_iff_candidate.mp hMem).2
 
 end LineSolver
 end Nonogram
