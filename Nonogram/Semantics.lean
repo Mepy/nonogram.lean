@@ -210,30 +210,4 @@ theorem Refines.trans
 
 end Board
 
-/-- A complete solution still possible under the clues and current board. -/
-def IsCandidate
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols)
-    (solution : Solution rows cols) : Prop :=
-  And (solution.Satisfies puzzle) (board.Compatible solution)
-
-def Board.Consistent
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols) : Prop :=
-  exists solution : Solution rows cols, IsCandidate puzzle board solution
-
-def ForcedFilled
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols)
-    (r : Fin rows)
-    (c : Fin cols) : Prop :=
-  forall solution, IsCandidate puzzle board solution -> solution r c = true
-
-def ForcedCrossed
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols)
-    (r : Fin rows)
-    (c : Fin cols) : Prop :=
-  forall solution, IsCandidate puzzle board solution -> solution r c = false
-
 end Nonogram

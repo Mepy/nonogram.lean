@@ -1,3 +1,4 @@
+import Nonogram.LineSolver.Spec
 import Nonogram.LineSolver.Soundness.Single
 import Nonogram.LineSolver.Soundness.Multi
 import Nonogram.LineSolver.Soundness.FixedPoint

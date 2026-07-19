@@ -1,13 +1,8 @@
-import Nonogram.Semantics
+import Nonogram.LineSolver.Spec
 
 namespace Nonogram
 
 namespace LineSolver
-
-/-- The result of intersecting every candidate for one line. -/
-structure Result (length : Nat) where
-  candidateCount : Nat
-  line : Line length Cell
 
 namespace Internal
 
@@ -15,8 +10,8 @@ namespace Internal
 def assignments : (length : Nat) -> List (List Bool)
   | 0 => [[]]
   | length + 1 =>
-      (assignments length).flatMap fun tail =>
-        [false :: tail, true :: tail]
+      (assignments length).map (false :: ·) ++
+        (assignments length).map (true :: ·)
 
 /-- Interpret a Boolean list as a finite line. Exposed for verification only. -/
 def ofList (cells : List Bool) : Line length Bool :=
