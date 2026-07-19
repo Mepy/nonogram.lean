@@ -24,6 +24,24 @@ syntax (name := nono) "nono" ppLine nonogramStep* : term
 
 namespace Tactic
 
+@[widget_module]
+private def boardWidget : Widget.Module where
+  javascript := "
+    import * as React from 'react';
+
+    export default function NonogramBoard(props) {
+      return React.createElement('pre', {
+        style: {
+          margin: 0,
+          overflowX: 'auto',
+          lineHeight: 1.4,
+          fontFamily: 'var(--vscode-editor-font-family, monospace)',
+          fontSize: 'var(--vscode-editor-font-size)'
+        }
+      }, props.board);
+    }
+  "
+
 /--
 The concrete puzzle recovered from a goal of the form `puzzle.Solvable`.
 Its value already contains every row and column clue; `nono` takes no puzzle argument.
@@ -66,8 +84,9 @@ private def showBoard
     (goal : Goal)
     (puzzle : Puzzle goal.rows goal.cols)
     (board : Board goal.rows goal.cols)
-    (ref : Syntax) : TermElabM Unit :=
-  logInfoAt ref (puzzle.renderBoard board)
+    (ref : Syntax) : TermElabM Unit := do
+  let props := Json.mkObj [("board", toJson (puzzle.renderBoard board))]
+  Widget.savePanelWidgetInfo boardWidget.javascriptHash (pure props) ref
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -133,7 +152,8 @@ private def elabNono
   let proof ← `(by
     refine ⟨$solution, ?_⟩
     native_decide)
-  elabTermEnsuringType proof expectedType
+  let result ← elabTermEnsuringType proof expectedType
+  return mkSaveInfoAnnotation result
 
 end Tactic
 
