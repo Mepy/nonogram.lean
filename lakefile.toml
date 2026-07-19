@@ -9,3 +9,7 @@ roots = ["Nonogram"]
 [[lean_exe]]
 name = "Nonogram"
 root = "Main"
+
+[[lean_exe]]
+name = "NonogramBench"
+root = "Benchmarks.LineSolver"
