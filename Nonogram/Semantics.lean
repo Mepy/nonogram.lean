@@ -138,6 +138,22 @@ def Refines (new old : Cell) : Prop :=
   | .filled => new = .filled
   | .crossed => new = .crossed
 
+/-- Every cell refines itself. -/
+theorem Refines.refl (cell : Cell) : cell.Refines cell := by
+  cases cell <;> simp [Cell.Refines]
+
+/-- Refinement of cells is transitive. -/
+theorem Refines.trans
+    {new middle old : Cell}
+    (hNew : new.Refines middle)
+    (hMiddle : middle.Refines old) :
+    new.Refines old := by
+  cases old <;> simp [Cell.Refines] at hMiddle ⊢
+  · subst middle
+    exact hNew
+  · subst middle
+    exact hNew
+
 end Cell
 
 namespace Line
@@ -153,6 +169,18 @@ def Refines
     (newLine oldLine : Line length Cell) : Prop :=
   forall i, Cell.Refines (newLine i) (oldLine i)
 
+/-- Every line refines itself. -/
+theorem Refines.refl (line : Line length Cell) : line.Refines line :=
+  fun i => Cell.Refines.refl (line i)
+
+/-- Refinement of lines is transitive. -/
+theorem Refines.trans
+    {newLine middleLine oldLine : Line length Cell}
+    (hNew : newLine.Refines middleLine)
+    (hMiddle : middleLine.Refines oldLine) :
+    newLine.Refines oldLine :=
+  fun i => Cell.Refines.trans (hNew i) (hMiddle i)
+
 end Line
 
 namespace Board
@@ -167,6 +195,18 @@ structure Compatible
 structure Refines
     (newBoard oldBoard : Board rows cols) : Prop where
   cell : forall r c, Cell.Refines (newBoard.get r c) (oldBoard.get r c)
+
+/-- Every board refines itself. -/
+theorem Refines.refl (board : Board rows cols) : board.Refines board where
+  cell r c := Cell.Refines.refl (board.get r c)
+
+/-- Refinement of boards is transitive. -/
+theorem Refines.trans
+    {newBoard middleBoard oldBoard : Board rows cols}
+    (hNew : newBoard.Refines middleBoard)
+    (hMiddle : middleBoard.Refines oldBoard) :
+    newBoard.Refines oldBoard where
+  cell r c := Cell.Refines.trans (hNew.cell r c) (hMiddle.cell r c)
 
 end Board
 

@@ -1,5 +1,5 @@
 import Lean
-import Nonogram.LineSolver
+import Nonogram.LineSolver.Board
 
 open Lean Elab Term Meta
 
@@ -47,6 +47,8 @@ syntax (name := nonogramGram) "gram" : nonogramStep
 syntax (name := nono) "nono" ppLine nonogramStep* : term
 
 namespace Tactic
+
+open LineSolver.BoardSolver
 
 @[widget_module]
 private def boardWidget : Widget.Module where
@@ -118,101 +120,26 @@ private def showBoard
 private def setMessage (cell : Cell) (row col : Nat) : String :=
   s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
 
-private structure SolvedLine where
-  index : Nat
-  candidateCount : Nat
-
 private def lineSolverReport (messages : Array String) : Option String :=
   if messages.isEmpty then none else some (String.intercalate "\n" messages.toList)
 
 private def pushCompactLineReport
     (messages : Array String)
     (direction : String)
-    (lines : Array SolvedLine) : Array String :=
+    (lines : List (LineSolver.BoardSolver.SolvedTarget rows cols)) : Array String :=
   if lines.isEmpty then
     messages
   else
-    let indices := lines.map fun solved => toString (solved.index + 1)
+    let indices := lines.map fun solved => toString (solved.target.index + 1)
     let candidateCounts := lines.map fun solved => toString solved.candidateCount
-    messages.push <| s!"line {direction} {String.intercalate ", " indices.toList}: " ++
-      s!"{String.intercalate ", " candidateCounts.toList} candidate(s)"
+    messages.push <| s!"line {direction} {String.intercalate ", " indices}: " ++
+      s!"{String.intercalate ", " candidateCounts} candidate(s)"
 
-private def allIndices (length : Nat) : Array (Fin length) :=
-  (List.ofFn fun i : Fin length => i).toArray
-
-private def solveRows
-    (puzzle : Puzzle rows cols)
-    (initialBoard : Board rows cols)
-    (indices : Array (Fin rows)) :
-    Except (Fin rows) (Board rows cols × Array SolvedLine) := do
-  let mut board := initialBoard
-  let mut lines := #[]
-  for row in indices do
-    let some result := LineSolver.solve (puzzle.rowClues row) (board.row row)
-      | throw row
-    board := board.replaceRow row result.line
-    lines := lines.push ⟨row.val, result.candidateCount⟩
-  return (board, lines)
-
-private def solveCols
-    (puzzle : Puzzle rows cols)
-    (initialBoard : Board rows cols)
-    (indices : Array (Fin cols)) :
-    Except (Fin cols) (Board rows cols × Array SolvedLine) := do
-  let mut board := initialBoard
-  let mut lines := #[]
-  for col in indices do
-    let some result := LineSolver.solve (puzzle.colClues col) (board.col col)
-      | throw col
-    board := board.replaceCol col result.line
-    lines := lines.push ⟨col.val, result.candidateCount⟩
-  return (board, lines)
-
-private inductive LineSolverError (rows cols : Nat) where
-  | row (index : Fin rows)
-  | col (index : Fin cols)
-
-private structure SolvedAllLines (rows cols : Nat) where
-  board : Board rows cols
-  rows : Array SolvedLine
-  cols : Array SolvedLine
-
-private def solveAllLines
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols) :
-    Except (LineSolverError rows cols) (SolvedAllLines rows cols) :=
-  match solveRows puzzle board (allIndices rows) with
-  | .error row => .error (.row row)
-  | .ok (rowBoard, rowLines) =>
-      match solveCols puzzle rowBoard (allIndices cols) with
-      | .error col => .error (.col col)
-      | .ok (newBoard, colLines) => .ok {
-          board := newBoard
-          rows := rowLines
-          cols := colLines
-        }
-
-private def boardsEqual (left right : Board rows cols) : Bool :=
-  (List.ofFn fun row =>
-    (List.ofFn fun col => left.get row col == right.get row col).all id).all id
-
-private def solveToFixedPoint
-    (puzzle : Puzzle rows cols)
-    (initialBoard : Board rows cols) :
-    Except (LineSolverError rows cols) (Board rows cols × Nat) :=
-  loop (rows * cols + 1) initialBoard 0
-where
-  loop : Nat -> Board rows cols -> Nat ->
-      Except (LineSolverError rows cols) (Board rows cols × Nat)
-    | 0, board, passes => .ok (board, passes)
-    | fuel + 1, board, passes =>
-        match solveAllLines puzzle board with
-        | .error error => .error error
-        | .ok result =>
-            if boardsEqual result.board board then
-              .ok (result.board, passes + 1)
-            else
-              loop fuel result.board (passes + 1)
+private def noCandidateMessage : Target rows cols -> String
+  | .row row =>
+      s!"`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+  | .col col =>
+      s!"`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -267,55 +194,49 @@ private def elabNono
           | `(nonogramStepLine| $direction:ident $indexStxs:num*) =>
               if direction.getId == `row then
                 let rows ← indexStxs.mapM (getCoordinate "row" goal.rows)
-                match solveRows puzzle board rows with
-                | .error row => throwErrorAt group
-                      "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-                | .ok (newBoard, lines) =>
-                    board := newBoard
-                    messages := pushCompactLineReport messages "row" lines
+                let targets := rows.toList.map Target.row
+                match solveTargets puzzle board targets with
+                | .error target => throwErrorAt group (noCandidateMessage target)
+                | .ok result =>
+                    board := result.board
+                    messages := pushCompactLineReport messages "row" result.solved
               else if direction.getId == `col then
                 let cols ← indexStxs.mapM (getCoordinate "column" goal.cols)
-                match solveCols puzzle board cols with
-                | .error col => throwErrorAt group
-                      "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
-                | .ok (newBoard, lines) =>
-                    board := newBoard
-                    messages := pushCompactLineReport messages "col" lines
+                let targets := cols.toList.map Target.col
+                match solveTargets puzzle board targets with
+                | .error target => throwErrorAt group (noCandidateMessage target)
+                | .ok result =>
+                    board := result.board
+                    messages := pushCompactLineReport messages "col" result.solved
               else
                 throwErrorAt direction "expected `row` or `col` after `line`"
           | `(nonogramStepLine| $direction:ident *) =>
               if direction.getId == `row then
-                match solveRows puzzle board (allIndices goal.rows) with
-                | .error row => throwErrorAt group
-                      "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-                | .ok (newBoard, lines) =>
-                    board := newBoard
-                    messages := pushCompactLineReport messages "row" lines
+                match solveTargets puzzle board (allRows goal.rows goal.cols) with
+                | .error target => throwErrorAt group (noCandidateMessage target)
+                | .ok result =>
+                    board := result.board
+                    messages := pushCompactLineReport messages "row" result.solved
               else if direction.getId == `col then
-                match solveCols puzzle board (allIndices goal.cols) with
-                | .error col => throwErrorAt group
-                      "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
-                | .ok (newBoard, lines) =>
-                    board := newBoard
-                    messages := pushCompactLineReport messages "col" lines
+                match solveTargets puzzle board (allCols goal.rows goal.cols) with
+                | .error target => throwErrorAt group (noCandidateMessage target)
+                | .ok result =>
+                    board := result.board
+                    messages := pushCompactLineReport messages "col" result.solved
               else
                 throwErrorAt direction "expected `row` or `col` after `line`"
           | `(nonogramStepLine| *) =>
-              match solveAllLines puzzle board with
-              | .error (.row row) => throwErrorAt group
-                    "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-              | .error (.col col) => throwErrorAt group
-                    "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+              match solveAll puzzle board with
+              | .error target => throwErrorAt group (noCandidateMessage target)
               | .ok result =>
                   board := result.board
-                  messages := pushCompactLineReport messages "row" result.rows
-                  messages := pushCompactLineReport messages "col" result.cols
+                  messages := pushCompactLineReport messages "row"
+                    (result.solved.take goal.rows)
+                  messages := pushCompactLineReport messages "col"
+                    (result.solved.drop goal.rows)
           | `(nonogramStepLine| **) =>
               match solveToFixedPoint puzzle board with
-              | .error (.row row) => throwErrorAt group
-                    "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-              | .error (.col col) => throwErrorAt group
-                    "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+              | .error target => throwErrorAt group (noCandidateMessage target)
               | .ok (newBoard, passes) =>
                   board := newBoard
                   messages := messages.push s!"line **: stabilized after {passes} pass(es)"
