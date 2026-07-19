@@ -1,24 +1,9 @@
 import Lean
-import Nonogram.LineSolver.Board
+import Nonogram.LineSolver.Tactic
 
 open Lean Elab Term Meta
 
 namespace Nonogram
-
-declare_syntax_cat nonogramStep
-declare_syntax_cat nonogramStepLine
-
-/-- One row or column group in a combined `line` command. -/
-syntax ident num* : nonogramStepLine
-
-/-- Select every row or column in one group of a combined `line` command. -/
-syntax ident "*" : nonogramStepLine
-
-/-- Process every row followed by every column once. -/
-syntax "*" : nonogramStepLine
-
-/-- Repeat `*` until a complete pass leaves the board unchanged. -/
-syntax "**" : nonogramStepLine
 
 /-- Separate commands in a `nono` block; line breaks remain valid separators. -/
 syntax (name := nonogramSeparator) ";" : nonogramStep
@@ -32,14 +17,6 @@ syntax (name := nonogramCross) "cross" num num : nonogramStep
 /-- `clear i j` sets `" "` (`Cell.unknown`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramClear) "clear" num num : nonogramStep
 
-/--
-Process a sequence of row and column groups from left to right. For example,
-`line row 1 2 col 3 row 4` lets each group use the board updated by the groups
-before it. A group with no indices is a no-op. Directions are identifiers to
-avoid reserving `row` and `col` as global Lean keywords.
--/
-syntax (name := nonogramLineSolver) "line" nonogramStepLine* : nonogramStep
-
 /-- Check the completed board against every clue and finish the proof. -/
 syntax (name := nonogramGram) "gram" : nonogramStep
 
@@ -47,8 +24,6 @@ syntax (name := nonogramGram) "gram" : nonogramStep
 syntax (name := nono) "nono" ppLine nonogramStep* : term
 
 namespace Tactic
-
-open LineSolver.BoardSolver
 
 @[widget_module]
 private def boardWidget : Widget.Module where
@@ -89,16 +64,6 @@ private def getGoal (expectedType : Expr) : TermElabM Goal := do
     | throwError "`nono` needs a concrete number of columns"
   return ⟨rows, cols, args[2]!⟩
 
-private def getCoordinate (label : String) (bound : Nat) (stx : TSyntax `num) : TermElabM (Fin bound) := do
-  let value := stx.getNat
-  if value == 0 then
-    throwErrorAt stx "Nonogram coordinates are 1-based; expected a positive number"
-  let index := value - 1
-  if h : index < bound then
-    return ⟨index, h⟩
-  else
-    throwErrorAt stx "{label} {value} is outside the range 1..{bound}"
-
 private unsafe def evalPuzzleUnsafe (goal : Goal) : TermElabM (Puzzle goal.rows goal.cols) := do
   let puzzleType ← inferType goal.puzzleExpr
   Meta.evalExpr (Puzzle goal.rows goal.cols) puzzleType goal.puzzleExpr
@@ -119,27 +84,6 @@ private def showBoard
 
 private def setMessage (cell : Cell) (row col : Nat) : String :=
   s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
-
-private def lineSolverReport (messages : Array String) : Option String :=
-  if messages.isEmpty then none else some (String.intercalate "\n" messages.toList)
-
-private def pushCompactLineReport
-    (messages : Array String)
-    (direction : String)
-    (lines : List (LineSolver.BoardSolver.SolvedTarget rows cols)) : Array String :=
-  if lines.isEmpty then
-    messages
-  else
-    let indices := lines.map fun solved => toString (solved.target.index + 1)
-    let candidateCounts := lines.map fun solved => toString solved.candidateCount
-    messages.push <| s!"line {direction} {String.intercalate ", " indices}: " ++
-      s!"{String.intercalate ", " candidateCounts} candidate(s)"
-
-private def noCandidateMessage : Target rows cols -> String
-  | .row row =>
-      s!"`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
-  | .col col =>
-      s!"`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -188,60 +132,9 @@ private def elabNono
         board := board.set r c .unknown
         showBoard goal puzzle board step (some (setMessage .unknown r.val c.val))
     | `(nonogramStep| line $groups:nonogramStepLine*) =>
-        let mut messages := #[]
-        for group in groups do
-          match group with
-          | `(nonogramStepLine| $direction:ident $indexStxs:num*) =>
-              if direction.getId == `row then
-                let rows ← indexStxs.mapM (getCoordinate "row" goal.rows)
-                let targets := rows.toList.map Target.row
-                match solveTargets puzzle board targets with
-                | .error target => throwErrorAt group (noCandidateMessage target)
-                | .ok result =>
-                    board := result.board
-                    messages := pushCompactLineReport messages "row" result.solved
-              else if direction.getId == `col then
-                let cols ← indexStxs.mapM (getCoordinate "column" goal.cols)
-                let targets := cols.toList.map Target.col
-                match solveTargets puzzle board targets with
-                | .error target => throwErrorAt group (noCandidateMessage target)
-                | .ok result =>
-                    board := result.board
-                    messages := pushCompactLineReport messages "col" result.solved
-              else
-                throwErrorAt direction "expected `row` or `col` after `line`"
-          | `(nonogramStepLine| $direction:ident *) =>
-              if direction.getId == `row then
-                match solveTargets puzzle board (allRows goal.rows goal.cols) with
-                | .error target => throwErrorAt group (noCandidateMessage target)
-                | .ok result =>
-                    board := result.board
-                    messages := pushCompactLineReport messages "row" result.solved
-              else if direction.getId == `col then
-                match solveTargets puzzle board (allCols goal.rows goal.cols) with
-                | .error target => throwErrorAt group (noCandidateMessage target)
-                | .ok result =>
-                    board := result.board
-                    messages := pushCompactLineReport messages "col" result.solved
-              else
-                throwErrorAt direction "expected `row` or `col` after `line`"
-          | `(nonogramStepLine| *) =>
-              match solveAll puzzle board with
-              | .error target => throwErrorAt group (noCandidateMessage target)
-              | .ok result =>
-                  board := result.board
-                  messages := pushCompactLineReport messages "row"
-                    (result.solved.take goal.rows)
-                  messages := pushCompactLineReport messages "col"
-                    (result.solved.drop goal.rows)
-          | `(nonogramStepLine| **) =>
-              match solveToFixedPoint puzzle board with
-              | .error target => throwErrorAt group (noCandidateMessage target)
-              | .ok (newBoard, passes) =>
-                  board := newBoard
-                  messages := messages.push s!"line **: stabilized after {passes} pass(es)"
-          | _ => throwUnsupportedSyntax
-        showBoard goal puzzle board step (lineSolverReport messages)
+        let (newBoard, report) ← LineSolver.Tactic.elabLine puzzle board groups
+        board := newBoard
+        showBoard goal puzzle board step report
     | `(nonogramStep| gram) =>
         let cells := cellsOfBoard board
         let unknownCount : Nat := cells.foldl (fun count cell =>

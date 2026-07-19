@@ -1,8 +1,8 @@
-import Nonogram.LineSolver
+import Nonogram.LineSolver.Single
 
 namespace Nonogram
 
-namespace LineSolver.BoardSolver
+namespace LineSolver.Multi
 
 /-- One row or column selected for line solving. -/
 inductive Target (rows cols : Nat) where
@@ -110,6 +110,6 @@ def solveToFixedPoint
     Except (Target rows cols) (Board rows cols × Nat) :=
   solveToFixedPointWithFuel puzzle (rows * cols + 1) board 0
 
-end LineSolver.BoardSolver
+end LineSolver.Multi
 
 end Nonogram

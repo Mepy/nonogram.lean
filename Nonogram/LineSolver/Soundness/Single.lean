@@ -1,4 +1,4 @@
-import Nonogram.LineSolver
+import Nonogram.LineSolver.Single
 
 namespace Nonogram
 
