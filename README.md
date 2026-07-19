@@ -24,8 +24,10 @@ row and column clues are fixed before `nono` starts.
 
 `fill`, `cross`, and `clear` use 1-based row and column coordinates. Lean's
 InfoView shows the current `Board` with its clues at `nono` and after every
-edit. `gram` accepts only a complete board satisfying every clue and then
-constructs the `Solution.Satisfies` proof.
+edit. `line row i` and `line col j` enumerate every candidate
+compatible with that line's clue and current cells, then record the cells on
+which all candidates agree. `gram` accepts only a complete board satisfying
+every clue and then constructs the `Solution.Satisfies` proof.
 
 ```bash
 lake build

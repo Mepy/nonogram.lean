@@ -20,3 +20,38 @@ example : xPuzzle.Solvable := nono
   cross 3 2
   fill 3 3
   gram
+
+example : xPuzzle.Solvable := nono
+  line row 1
+  line row 2
+  line row 3
+  line col 1
+  line col 2
+  line col 3
+  gram
+
+/-- Row 3 initially has the three candidates `■■■××`, `×■■■×`, and `××■■■`. -/
+def overlapPuzzle : Puzzle 3 5 where
+  rowClues i := if i.val = 2 then [3] else []
+  colClues i := if i.val = 0 || i.val = 4 then [] else [1]
+
+private def blankFive : Line 5 Cell := fun _ => .unknown
+
+example : (LineSolver.solve [3] blankFive).map (·.candidateCount) = some 3 := by
+  native_decide
+
+example :
+    (LineSolver.solve [3] blankFive).map (fun result => result.line.toList) =
+      some [.unknown, .unknown, .filled, .unknown, .unknown] := by
+  native_decide
+
+example : overlapPuzzle.Solvable := nono
+  line row 3
+  line row 1
+  line row 2
+  line col 1
+  line col 2
+  line col 3
+  line col 4
+  line col 5
+  gram

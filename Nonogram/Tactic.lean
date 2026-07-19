@@ -1,5 +1,5 @@
 import Lean
-import Nonogram.Semantics
+import Nonogram.LineSolver
 
 open Lean Elab Term Meta
 
@@ -15,6 +15,13 @@ syntax (name := nonogramCross) "cross" num num : nonogramStep
 
 /-- `clear i j` sets `" "` (`Cell.unknown`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramClear) "clear" num num : nonogramStep
+
+/--
+`line row i` or `line col j` enumerates and intersects all candidates for one
+1-based line. The direction is parsed as an identifier to avoid reserving
+`row` and `col` as global Lean keywords.
+-/
+syntax (name := nonogramLineSolver) "line" ident num : nonogramStep
 
 /-- Check the completed board against every clue and finish the proof. -/
 syntax (name := nonogramGram) "gram" : nonogramStep
@@ -94,6 +101,9 @@ private def showBoard
 private def setMessage (cell : Cell) (row col : Nat) : String :=
   s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
 
+private def lineSolverMessage (direction : String) (index candidateCount : Nat) : String :=
+  s!"line {direction} {index + 1}: {candidateCount} candidate(s)"
+
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
 The elaborator itself keeps `Board rows cols` as its only mutable puzzle state.
@@ -125,20 +135,39 @@ private def elabNono
       throwErrorAt step "`gram` must be the final command in a `nono` block"
     match step with
     | `(nonogramStep| fill $rowStx:num $colStx:num) =>
-        let row ← getCoordinate "row" goal.rows rowStx
-        let col ← getCoordinate "column" goal.cols colStx
-        board := board.set row col .filled
-        showBoard goal puzzle board step (some (setMessage .filled row.val col.val))
+        let r ← getCoordinate "row" goal.rows rowStx
+        let c ← getCoordinate "column" goal.cols colStx
+        board := board.set r c .filled
+        showBoard goal puzzle board step (some (setMessage .filled r.val c.val))
     | `(nonogramStep| cross $rowStx:num $colStx:num) =>
-        let row ← getCoordinate "row" goal.rows rowStx
-        let col ← getCoordinate "column" goal.cols colStx
-        board := board.set row col .crossed
-        showBoard goal puzzle board step (some (setMessage .crossed row.val col.val))
+        let r ← getCoordinate "row" goal.rows rowStx
+        let c ← getCoordinate "column" goal.cols colStx
+        board := board.set r c .crossed
+        showBoard goal puzzle board step (some (setMessage .crossed r.val c.val))
     | `(nonogramStep| clear $rowStx:num $colStx:num) =>
-        let row ← getCoordinate "row" goal.rows rowStx
-        let col ← getCoordinate "column" goal.cols colStx
-        board := board.set row col .unknown
-        showBoard goal puzzle board step (some (setMessage .unknown row.val col.val))
+        let r ← getCoordinate "row" goal.rows rowStx
+        let c ← getCoordinate "column" goal.cols colStx
+        board := board.set r c .unknown
+        showBoard goal puzzle board step (some (setMessage .unknown r.val c.val))
+    | `(nonogramStep| line $direction:ident $indexStx:num) =>
+        if direction.getId == `row then
+          let row ← getCoordinate "row" goal.rows indexStx
+          let some result := LineSolver.solve (puzzle.rowClues row) (board.row row)
+            | throwErrorAt step
+                "`line row {row.val + 1}` found no candidate; the current row contradicts its clue"
+          board := board.replaceRow row result.line
+          showBoard goal puzzle board step
+            (some (lineSolverMessage "row" row.val result.candidateCount))
+        else if direction.getId == `col then
+          let col ← getCoordinate "column" goal.cols indexStx
+          let some result := LineSolver.solve (puzzle.colClues col) (board.col col)
+            | throwErrorAt step
+                "`line col {col.val + 1}` found no candidate; the current column contradicts its clue"
+          board := board.replaceCol col result.line
+          showBoard goal puzzle board step
+            (some (lineSolverMessage "col" col.val result.candidateCount))
+        else
+          throwErrorAt direction "expected `row` or `col` after `line`"
     | `(nonogramStep| gram) =>
         let cells := cellsOfBoard board
         let unknownCount : Nat := cells.foldl (fun count cell =>
