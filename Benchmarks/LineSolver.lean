@@ -1,7 +1,7 @@
 import Nonogram.LineSolver.Single
 
 /-!
-Run with `lake exe NonogramBench`. Timings are informational and deliberately
+Run with `lake exe nonoBench`. Timings are informational and deliberately
 have no fixed pass/fail threshold; candidate-count disagreement is an error.
 -/
 

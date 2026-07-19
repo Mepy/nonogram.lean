@@ -438,7 +438,7 @@ def parse (args : List String) : Except String Config := do
 end Config
 
 def usage : String :=
-  "Usage: lake exe Nonogram -- [options]\n\n" ++
+  "Usage: lake exe nonogram -- [options]\n\n" ++
   "Options:\n" ++
   "  --rows N       puzzle rows (default 5, maximum 12)\n" ++
   "  --cols N       puzzle columns (default 5, maximum 12)\n" ++

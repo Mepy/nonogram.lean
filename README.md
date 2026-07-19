@@ -41,7 +41,7 @@ Run the CLI to generate a reproducible random solution, derive its clues, and
 solve it with the same line solver used by the tactics:
 
 ```bash
-lake exe Nonogram -- --rows 5 --cols 5 --seed 42
+lake exe nonogram -- --rows 5 --cols 5 --seed 42
 ```
 
 Press Enter for the next productive row or column, or enter tactic-like
@@ -72,7 +72,7 @@ Use `--auto` to apply productive line deductions until they solve the puzzle or
 reach a fixed point, and `--reveal` to show the generated solution afterward:
 
 ```bash
-lake exe Nonogram -- --seed 42 --auto --reveal
+lake exe nonogram -- --seed 42 --auto --reveal
 ```
 
 Solve a concrete puzzle as a theorem with the `nono` term elaborator:
@@ -118,5 +118,5 @@ example : diagonal.Solvable := nono;
 
 ```bash
 lake build
-lake exe Nonogram
+lake exe nonogram
 ```

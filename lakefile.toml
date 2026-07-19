@@ -1,15 +1,15 @@
 name = "nonogram-lean"
 version = "0.1.0"
-defaultTargets = ["Nonogram"]
+defaultTargets = ["nonogram"]
 
 [[lean_lib]]
-name = "NonogramLib"
+name = "nonoLib"
 roots = ["Nonogram"]
 
 [[lean_exe]]
-name = "Nonogram"
+name = "nonogram"
 root = "Main"
 
 [[lean_exe]]
-name = "NonogramBench"
+name = "nonoBench"
 root = "Benchmarks.LineSolver"
