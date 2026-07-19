@@ -9,33 +9,32 @@ structure Result (length : Nat) where
   candidateCount : Nat
   line : Line length Cell
 
-private def assignments : (length : Nat) -> List (List Bool)
+namespace Internal
+
+/-- Enumerate Boolean lists of a given length. Exposed for verification only. -/
+def assignments : (length : Nat) -> List (List Bool)
   | 0 => [[]]
   | length + 1 =>
       (assignments length).flatMap fun tail =>
         [false :: tail, true :: tail]
 
-private def ofList (cells : List Bool) : Line length Bool :=
+/-- Interpret a Boolean list as a finite line. Exposed for verification only. -/
+def ofList (cells : List Bool) : Line length Bool :=
   fun i => cells.getD i.val false
 
-private def compatibleCell (known : Cell) (candidate : Bool) : Bool :=
+/-- Check compatibility at one cell. Exposed for verification only. -/
+def compatibleCell (known : Cell) (candidate : Bool) : Bool :=
   match known with
   | .unknown => true
   | .filled => candidate
   | .crossed => !candidate
 
-private def compatible (known : Line length Cell) (candidate : Line length Bool) : Bool :=
+/-- Check compatibility between a known line and a candidate. -/
+def compatible (known : Line length Cell) (candidate : Line length Bool) : Bool :=
   (List.ofFn fun i => compatibleCell (known i) (candidate i)).all id
 
-/--
-Enumerate every Boolean line that satisfies `clue` and agrees with the cells
-already known in `line`.
--/
-def candidates (clue : Clue) (line : Line length Cell) : List (Line length Bool) :=
-  (assignments length).map ofList |>.filter fun candidate =>
-    Line.satisfies clue candidate && compatible line candidate
-
-private def intersect (candidates : List (Line length Bool)) : Line length Cell :=
+/-- Intersect a list of Boolean candidates. Exposed for verification only. -/
+def intersect (candidates : List (Line length Bool)) : Line length Cell :=
   fun i =>
     if candidates.all fun candidate => candidate i then
       .filled
@@ -43,6 +42,16 @@ private def intersect (candidates : List (Line length Bool)) : Line length Cell 
       .crossed
     else
       .unknown
+
+end Internal
+
+/--
+Enumerate every Boolean line that satisfies `clue` and agrees with the cells
+already known in `line`.
+-/
+def candidates (clue : Clue) (line : Line length Cell) : List (Line length Bool) :=
+  (Internal.assignments length).map Internal.ofList |>.filter fun candidate =>
+    Line.satisfies clue candidate && Internal.compatible line candidate
 
 /--
 Intersect all candidates for a line. A cell is decided exactly when every
@@ -55,7 +64,7 @@ def solve (clue : Clue) (line : Line length Cell) : Option (Result length) :=
   else
     some {
       candidateCount := candidates.length
-      line := intersect candidates
+      line := Internal.intersect candidates
     }
 
 end LineSolver

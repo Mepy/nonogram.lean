@@ -140,6 +140,21 @@ def Refines (new old : Cell) : Prop :=
 
 end Cell
 
+namespace Line
+
+/-- The known cells in a line do not contradict a completed Boolean line. -/
+def Compatible
+    (line : Line length Cell)
+    (solution : Line length Bool) : Prop :=
+  forall i, Cell.Compatible (line i) (solution i)
+
+/-- The first line contains at least all information in the second line. -/
+def Refines
+    (newLine oldLine : Line length Cell) : Prop :=
+  forall i, Cell.Refines (newLine i) (oldLine i)
+
+end Line
+
 namespace Board
 
 /-- The board contains no information contradicting a complete solution. -/
