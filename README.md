@@ -4,6 +4,22 @@ A finite Nonogram model in Lean 4, including typed boards, clues, board renderin
 with clues, solutions, puzzle validity, candidate states, and contracts for
 deduction rules.
 
+Define a puzzle with literal row and column clues using `nonogram`. The number
+of entries in each section determines the dimensions, so the annotation below
+is optional. Use `-` (or `[]`) for a line with no black cells:
+
+```lean
+def crossPuzzle : Puzzle 5 5 := nonogram {
+  rows: [[1], [1], [5], [1], [1]],
+  columns: [[1], [1], [5], [1], [1]]
+}
+```
+
+Literal clues are checked at compile time: every block must be positive and
+each clue must fit its row or column. For computed inputs,
+`Puzzle.ofClueLists rows columns` constructs a puzzle whose dimensions are the
+two list lengths.
+
 Solve a concrete puzzle as a theorem with the `nono` term elaborator:
 
 ```lean

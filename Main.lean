@@ -3,9 +3,10 @@ import Nonogram
 open Nonogram
 
 /-- A small cross-shaped 5 x 5 puzzle. -/
-def crossPuzzle : Puzzle 5 5 where
-  rowClues i := if i.val = 2 then [5] else [1]
-  colClues i := if i.val = 2 then [5] else [1]
+def crossPuzzle : Puzzle 5 5 := nonogram {
+  rows: [[1], [1], [5], [1], [1]],
+  columns: [[1], [1], [5], [1], [1]]
+}
 
 def crossSolution : Solution 5 5 :=
   fun r c => r.val == 2 || c.val == 2
