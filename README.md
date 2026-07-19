@@ -37,6 +37,44 @@ For an existing `solution : Solution rows cols`, `solution.rowClue r` and
 the complete puzzle. The solution satisfies that generated puzzle by
 `solution.satisfies_toPuzzle`.
 
+Run the CLI to generate a reproducible random solution, derive its clues, and
+solve it with the same line solver used by the tactics:
+
+```bash
+lake exe Nonogram -- --rows 5 --cols 5 --seed 42
+```
+
+Press Enter for the next productive row or column, or enter tactic-like
+commands such as `line row 1 3 col 2`, `line *`, `line **`, `fill 2 3`, and
+`gram`. Each seed maps directly to one random solution; generation does not
+filter puzzles according to what the current line solver can recover. The seed
+is printed so the puzzle can be reproduced.
+
+Session directives use a `#` prefix. `#new` starts another game with the next
+seed, while `#new 1729` uses an explicit seed. Successful `fill`, `cross`,
+`clear`, and `line` commands are recorded as the user's solving transcript.
+Once the current board is complete and satisfies the clues, `#export` prints
+standalone Lean source containing the puzzle as `nonogram from clues` and that
+transcript as a replayable `nono` proof:
+
+```text
+nono> #new 42
+nono> line row 2 col 1
+nono> #export
+```
+
+Before exporting, the CLI replays the recorded transcript from an unknown board
+and verifies that it reproduces the current solution. `#new` clears both the
+board and transcript. `#show`, `#reveal`, `#help`, and `#quit` provide the
+remaining session controls.
+
+Use `--auto` to apply productive line deductions until they solve the puzzle or
+reach a fixed point, and `--reveal` to show the generated solution afterward:
+
+```bash
+lake exe Nonogram -- --seed 42 --auto --reveal
+```
+
 Solve a concrete puzzle as a theorem with the `nono` term elaborator:
 
 ```lean
