@@ -7,13 +7,13 @@ namespace Nonogram
 
 declare_syntax_cat nonogramStep
 
-/-- Mark the cell at the given 1-based row and column as filled. -/
+/-- `fill i j` sets `"■"` (`Cell.filled`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramFill) "fill" num num : nonogramStep
 
-/-- Mark the cell at the given 1-based row and column as crossed. -/
+/-- `cross i j` sets `"×"` (`Cell.crossed`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramCross) "cross" num num : nonogramStep
 
-/-- Return the cell at the given 1-based row and column to unknown. -/
+/-- `clear i j` sets `" "` (`Cell.unknown`) at row `i`, column `j`; both are 1-based. -/
 syntax (name := nonogramClear) "clear" num num : nonogramStep
 
 /-- Check the completed board against every clue and finish the proof. -/
@@ -84,9 +84,15 @@ private def showBoard
     (goal : Goal)
     (puzzle : Puzzle goal.rows goal.cols)
     (board : Board goal.rows goal.cols)
-    (ref : Syntax) : TermElabM Unit := do
-  let props := Json.mkObj [("board", toJson (puzzle.renderBoard board))]
+    (ref : Syntax)
+    (message? : Option String := none) : TermElabM Unit := do
+  let boardText := puzzle.renderBoard board
+  let text := message?.map (· ++ "\n\n" ++ boardText) |>.getD boardText
+  let props := Json.mkObj [("board", toJson text)]
   Widget.savePanelWidgetInfo boardWidget.javascriptHash (pure props) ref
+
+private def setMessage (cell : Cell) (row col : Nat) : String :=
+  s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -122,17 +128,17 @@ private def elabNono
         let row ← getCoordinate "row" goal.rows rowStx
         let col ← getCoordinate "column" goal.cols colStx
         board := board.set row col .filled
-        showBoard goal puzzle board step
+        showBoard goal puzzle board step (some (setMessage .filled row.val col.val))
     | `(nonogramStep| cross $rowStx:num $colStx:num) =>
         let row ← getCoordinate "row" goal.rows rowStx
         let col ← getCoordinate "column" goal.cols colStx
         board := board.set row col .crossed
-        showBoard goal puzzle board step
+        showBoard goal puzzle board step (some (setMessage .crossed row.val col.val))
     | `(nonogramStep| clear $rowStx:num $colStx:num) =>
         let row ← getCoordinate "row" goal.rows rowStx
         let col ← getCoordinate "column" goal.cols colStx
         board := board.set row col .unknown
-        showBoard goal puzzle board step
+        showBoard goal puzzle board step (some (setMessage .unknown row.val col.val))
     | `(nonogramStep| gram) =>
         let cells := cellsOfBoard board
         let unknownCount : Nat := cells.foldl (fun count cell =>
