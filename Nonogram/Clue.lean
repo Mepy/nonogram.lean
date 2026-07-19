@@ -24,10 +24,10 @@ def isWellFormed (lineLength : Nat) (clue : Clue) : Bool :=
   clue.all (fun block => decide (0 < block)) &&
     decide (requiredLength clue <= lineLength)
 
-/-- Render a clue as space-separated run lengths; `0` denotes an empty line. -/
+/-- Render a clue as space-separated run lengths; an empty clue is left blank. -/
 def render (clue : Clue) : String :=
   if clue.isEmpty then
-    "0"
+    ""
   else
     String.intercalate " " (clue.map toString)
 
