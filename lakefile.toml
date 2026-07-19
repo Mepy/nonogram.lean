@@ -1,0 +1,11 @@
+name = "nonogram-lean"
+version = "0.1.0"
+defaultTargets = ["Nonogram"]
+
+[[lean_lib]]
+name = "NonogramLib"
+roots = ["Nonogram"]
+
+[[lean_exe]]
+name = "Nonogram"
+root = "Main"
