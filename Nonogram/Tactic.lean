@@ -82,8 +82,28 @@ private def showBoard
   let props := Json.mkObj [("board", toJson text)]
   Widget.savePanelWidgetInfo boardWidget.javascriptHash (pure props) ref
 
+/-- Show the unchanged board on source lines between two consecutive `nono` syntax nodes. -/
+private def showBoardBetween
+    (goal : Goal)
+    (puzzle : Puzzle goal.rows goal.cols)
+    (board : Board goal.rows goal.cols)
+    (before after : Syntax) : TermElabM Unit := do
+  let some beforeTail := before.getTailPos? (canonicalOnly := true) | return
+  let some afterPos := after.getPos? (canonicalOnly := true) | return
+  let fileMap ← getFileMap
+  let beforeLine := fileMap.toPosition beforeTail |>.line
+  let afterLine := fileMap.toPosition afterPos |>.line
+  for lineNo in [beforeLine + 1:afterLine] do
+    let pos := fileMap.lineStart lineNo
+    showBoard goal puzzle board (Syntax.ofRange ⟨pos, pos⟩)
+
 private def setMessage (cell : Cell) (row col : Nat) : String :=
   s!"set \"{toString cell}\" at ({row + 1}, {col + 1}) (both 1-based)"
+
+/-- Prevent Lean's term-goal fallback from rendering `⊢ puzzle.Solvable` inside a `nono` block. -/
+private def hideDefaultTermGoal (expectedType : Expr) (ref : Syntax) : TermElabM Unit := do
+  let placeholder ← mkSorry expectedType (synthetic := true)
+  addTermInfo' ref placeholder (expectedType? := expectedType)
 
 /--
 Enumerate the functional `Board` in row-major order solely to quote the final solution.
@@ -104,16 +124,22 @@ private def solutionSyntax (cols : Nat) (cells : List Cell) : TermElabM (TSyntax
 private def elabNono
     (steps : Array (TSyntax `nonogramStep))
     (nonoRef : Syntax)
+    (nonoStx : Syntax)
     (expectedType : Expr) : TermElabM Expr := do
   let goal ← getGoal expectedType
   let puzzle ← evalPuzzle goal
+  hideDefaultTermGoal expectedType nonoStx
   -- Each edit replaces this functional board; no array-backed board state is maintained.
   let mut board : Board goal.rows goal.cols := Board.unknown
   let mut finished := false
+  let mut previousRef := nonoRef
   showBoard goal puzzle board nonoRef
   for step in steps do
     if finished && !step.raw.isOfKind ``nonogramSeparator then
       throwErrorAt step "`gram` must be the final command in a `nono` block"
+    showBoardBetween goal puzzle board previousRef step
+    unless step.raw.isOfKind ``nonogramSeparator do
+      showBoard goal puzzle board step
     match step with
     | `(nonogramStep| ;) => pure ()
     | `(nonogramStep| fill $rowStx:num $colStx:num) =>
@@ -140,26 +166,30 @@ private def elabNono
         let unknownCount : Nat := cells.foldl (fun count cell =>
           if cell == .unknown then count + 1 else count) 0
         unless unknownCount == 0 do
-          showBoard goal puzzle board step
           throwErrorAt step "cannot run `gram`: {unknownCount} cells are still unknown"
         let solution : Solution goal.rows goal.cols := fun r c => board.get r c == .filled
         unless decide (solution.Satisfies puzzle) do
-          showBoard goal puzzle board step
           throwErrorAt step "`gram` failed: the completed board does not satisfy the clues"
         finished := true
     | _ => throwUnsupportedSyntax
+    previousRef := step
   unless finished do
     throwError "a `nono` block must end with `gram`"
   let solution ← solutionSyntax goal.cols (cellsOfBoard board)
   let proof ← `(by
     refine ⟨$solution, ?_⟩
     native_decide)
-  let result ← elabTermEnsuringType proof expectedType
+  -- The generated proof is an implementation detail. Hiding its tactic info keeps
+  -- Lean's default goal view from obscuring the board state shown by `nono`.
+  let result ← withEnableInfoTree false <| elabTermEnsuringType proof expectedType
   return mkSaveInfoAnnotation result
 
 end Tactic
 
 elab_rules : term <= expectedType
-  | `(nono%$nonoTk $steps:nonogramStep*) => Tactic.elabNono steps nonoTk expectedType
+  | `(nono%$nonoTk $steps:nonogramStep*) =>
+      let nonoStx := Syntax.node .none (Name.mkSimple "nonogramState")
+        (#[nonoTk] ++ steps.map fun step => step.raw)
+      Tactic.elabNono steps nonoTk nonoStx expectedType
 
 end Nonogram
