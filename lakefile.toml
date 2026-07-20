@@ -13,3 +13,7 @@ root = "Main"
 [[lean_exe]]
 name = "nonoBench"
 root = "Benchmarks.LineSolver"
+
+[[lean_exe]]
+name = "nonoSieve"
+root = "Tools.Sieve"

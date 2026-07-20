@@ -287,6 +287,10 @@ def solveSteps
         steps := steps ++ [next]
   return (steps, board)
 
+/--
+Generate independent cells using `density` as a percentage threshold. The
+resulting board has `density` percent black cells on average, not exactly.
+-/
 private def randomCells : Nat -> Nat -> StdGen -> Array Bool × StdGen
   | 0, _, generator => (#[], generator)
   | count + 1, density, generator =>

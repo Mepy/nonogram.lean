@@ -75,6 +75,19 @@ reach a fixed point, and `--reveal` to show the generated solution afterward:
 lake exe nonogram -- --seed 42 --auto --reveal
 ```
 
+To scan generated puzzles for cases where the line solver reaches an incomplete
+fixed point, use the separate finder:
+
+```bash
+lake exe nonoSieve -- --rows 5 --cols 5 --start 0 --seeds 100 --limit 5
+```
+
+Each result includes its seed, clue DSL, and the board at the fixed point. Add
+`--classify` to count up to two complete solutions and label each result as
+`unique` or `multiple`; add `--reveal` to print the randomly generated solution.
+The global classification search is optional because it can be substantially
+more expensive on larger boards.
+
 Solve a concrete puzzle as a theorem with the `nono` term elaborator:
 
 ```lean
