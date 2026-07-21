@@ -1,5 +1,6 @@
 import Std.Internal.Parsec.String
 import Nonogram.LineSolver.Multi
+import Nonogram.WeaveSolver
 
 namespace Nonogram
 
@@ -32,6 +33,7 @@ inductive Command where
   | exportSource
   | step
   | line (groups : List LineGroup)
+  | weave (coordinates : List (Nat × Nat))
   | edit (value : Cell) (row col : Nat)
   | gram
   | show
@@ -90,6 +92,13 @@ private def lineCommand : Parser Command := do
   keyword "line"
   return .line (← many lineGroup).toList
 
+private def weaveCoordinate : Parser (Nat × Nat) := do
+  return (← natural, ← natural)
+
+private def weaveCommand : Parser Command := do
+  keyword "weave"
+  return .weave (← many weaveCoordinate).toList
+
 private def editCommand (name : String) (value : Cell) : Parser Command := do
   keyword name
   return .edit value (← natural) (← natural)
@@ -115,6 +124,7 @@ private def commandParser : Parser Command := do
       namedCommand "#show" .show <|>
       namedCommand "#reveal" .reveal <|>
       lineCommand <|>
+      weaveCommand <|>
       editCommand "fill" .filled <|>
       editCommand "cross" .crossed <|>
       editCommand "clear" .unknown <|>
@@ -255,6 +265,28 @@ def applyLineGroups
             messages := messages ++ [s!"line **: stabilized after {passes} pass(es)"]
   return (board, messages)
 
+private def weaveMessage (result : WeaveSolver.Result rows cols) : String :=
+  let disposition :=
+    if result.resolved then "applied the unique candidate"
+    else "board unchanged"
+  s!"weave: {result.candidateCount} of {result.attemptedCount} candidate(s) survived; " ++
+    disposition
+
+/-- Execute a runtime `weave` command using 1-based cell coordinates. -/
+def applyWeave
+    (puzzle : Puzzle rows cols)
+    (board : Board rows cols)
+    (coordinates : List (Nat × Nat)) :
+    Except String (Board rows cols × String) := do
+  let coordinates ← coordinates.mapM fun (row, column) => do
+    let row ← parseIndex "row" rows row
+    let col ← parseIndex "column" cols column
+    return WeaveSolver.Coordinate.mk row col
+  match WeaveSolver.solve puzzle board coordinates with
+  | .error _ =>
+      .error "weave rejected every candidate; the current board contradicts the clues"
+  | .ok result => .ok (result.board, weaveMessage result)
+
 /-- One productive single-line deduction. -/
 structure Step (rows cols : Nat) where
   target : Target rows cols
@@ -339,6 +371,11 @@ private def lineGroupSource : LineGroup -> String
 def lineSource (groups : List LineGroup) : String :=
   String.intercalate " " ("line" :: groups.map lineGroupSource)
 
+/-- Render a runtime weave command in the syntax accepted by `nono`. -/
+def weaveSource (coordinates : List (Nat × Nat)) : String :=
+  let values := coordinates.flatMap fun (row, column) => [toString row, toString column]
+  String.intercalate " " ("weave" :: values)
+
 /-- Render one successful manual cell edit in tactic syntax. -/
 def editSource (value : Cell) (row column : Nat) : String :=
   let command := match value with
@@ -360,6 +397,9 @@ private def replayTranscript
     | .edit value row column => board ← applyEdit board value row column
     | .line groups =>
         let (nextBoard, _) ← applyLineGroups puzzle board groups
+        board := nextBoard
+    | .weave coordinates =>
+        let (nextBoard, _) ← applyWeave puzzle board coordinates
         board := nextBoard
     | _ => throw s!"cannot replay non-tactic transcript entry `{source}`"
   return board
@@ -464,6 +504,7 @@ def commandHelp : String :=
   "  line row 1 2 col 3       solve selected lines from left to right\n" ++
   "  line row * / line col *  solve every line on one axis\n" ++
   "  line * / line **         run one pass / run to a fixed point\n" ++
+  "  weave R C ...             probe cell assignments using line contradictions\n" ++
   "  gram                      check that the completed board satisfies all clues\n" ++
   "  show                      print the current board\n" ++
   "  reveal                    print the generated solution\n" ++
@@ -572,6 +613,16 @@ private partial def repl
           IO.println (generated.puzzle.renderBoard nextBoard)
           if isComplete nextBoard then IO.println "Solved."
           repl density seed generated nextBoard (transcript ++ [lineSource groups])
+  | .ok (.weave coordinates) =>
+      match applyWeave generated.puzzle board coordinates with
+      | .error message =>
+          IO.eprintln s!"error: {message}"
+          repl density seed generated board transcript
+      | .ok (nextBoard, message) =>
+          IO.println message
+          IO.println (generated.puzzle.renderBoard nextBoard)
+          if isComplete nextBoard then IO.println "Solved."
+          repl density seed generated nextBoard (transcript ++ [weaveSource coordinates])
 
 /-- Run the random-puzzle CLI. -/
 def run (args : List String) : IO UInt32 := do

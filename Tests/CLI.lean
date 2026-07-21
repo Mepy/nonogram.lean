@@ -26,6 +26,18 @@ example :
   native_decide
 
 example :
+    (match Command.parse "weave 5 1 2 3" with
+    | .ok command => command == .weave [(5, 1), (2, 3)]
+    | .error _ => false) = true := by
+  native_decide
+
+example :
+    (match Command.parse "weave 1" with
+    | .ok _ => false
+    | .error _ => true) = true := by
+  native_decide
+
+example :
     (match Command.parse "fill 2 3" with
     | .ok command => command == .edit .filled 2 3
     | .error _ => false) = true := by
@@ -82,6 +94,24 @@ def testPuzzle : Puzzle 5 5 := testSolution.toPuzzle
 def testGenerated : Generated 5 5 where
   solution := testSolution
   puzzle := testPuzzle
+
+example :
+    (match applyWeave testPuzzle Board.unknown [(1, 1), (1, 2)] with
+    | .ok (board, _) => isComplete board && matchesSolution board testSolution
+    | .error _ => false) = true := by
+  native_decide
+
+example : weaveSource [(5, 1), (2, 3)] = "weave 5 1 2 3" := by
+  native_decide
+
+example :
+    (match applyWeave testPuzzle Board.unknown [(1, 1), (1, 2)] with
+    | .error _ => false
+    | .ok (board, _) =>
+        match exportLeanSource "wovenCross" testGenerated board ["weave 1 1 1 2"] with
+        | .ok _ => true
+        | .error _ => false) = true := by
+  native_decide
 
 def testTranscript : List String := [
   "line row 3",

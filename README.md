@@ -45,17 +45,17 @@ lake exe nonogram -- --rows 5 --cols 5 --seed 42
 ```
 
 Press Enter for the next productive row or column, or enter tactic-like
-commands such as `line row 1 3 col 2`, `line *`, `line **`, `fill 2 3`, and
-`gram`. Each seed maps directly to one random solution; generation does not
-filter puzzles according to what the current line solver can recover. The seed
-is printed so the puzzle can be reproduced.
+commands such as `line row 1 3 col 2`, `line *`, `line **`, `weave 5 1 2 3`,
+`fill 2 3`, and `gram`. Each seed maps directly to one random solution;
+generation does not filter puzzles according to what the current line solver
+can recover. The seed is printed so the puzzle can be reproduced.
 
 Session directives use a `#` prefix. `#new` starts another game with the next
 seed, while `#new 1729` uses an explicit seed. Successful `fill`, `cross`,
-`clear`, and `line` commands are recorded as the user's solving transcript.
-Once the current board is complete and satisfies the clues, `#export` prints
-standalone Lean source containing the puzzle as `nonogram from clues` and that
-transcript as a replayable `nono` proof:
+`clear`, `line`, and `weave` commands are recorded as the user's solving
+transcript. Once the current board is complete and satisfies the clues,
+`#export` prints standalone Lean source containing the puzzle as
+`nonogram from clues` and that transcript as a replayable `nono` proof:
 
 ```text
 nono> #new 42
@@ -120,6 +120,13 @@ mixed with row and column groups and are evaluated from left to right. Each
 InfoView panel shows its tactic report above the updated board. `gram` accepts
 only a complete board satisfying every clue and then constructs the
 `Solution.Satisfies` proof.
+
+`weave r c ...` enumerates filled/crossed assignments for the listed 1-based
+cell coordinates and runs `line **` on each assignment. Assignments that make
+some row or column contradictory are discarded. If exactly one candidate
+survives, its complete line deductions become the current board; if several
+survive, the board remains unchanged and the InfoView report gives the count.
+For example, `weave 5 1 2 3` jointly probes cells `(5, 1)` and `(2, 3)`.
 
 Commands may be separated by line breaks, semicolons, or both:
 

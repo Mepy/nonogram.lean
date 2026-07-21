@@ -1,5 +1,6 @@
 import Lean
 import Nonogram.LineSolver.Tactic
+import Nonogram.WeaveSolver.Tactic
 
 open Lean Elab Term Meta
 
@@ -159,6 +160,10 @@ private def elabNono
         showBoard goal puzzle board step (some (setMessage .unknown r.val c.val))
     | `(nonogramStep| line $groups:nonogramStepLine*) =>
         let (newBoard, report) ← LineSolver.Tactic.elabLine puzzle board groups
+        board := newBoard
+        showBoard goal puzzle board step report
+    | `(nonogramStep| weave $coordinates:nonogramWeaveCoordinate*) =>
+        let (newBoard, report) ← WeaveSolver.Tactic.elabWeave puzzle board coordinates
         board := newBoard
         showBoard goal puzzle board step report
     | `(nonogramStep| gram) =>

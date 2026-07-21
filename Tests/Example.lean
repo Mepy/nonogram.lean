@@ -73,7 +73,47 @@ example : bear.Solvable :=
   line col 6 7 8 9 17 21 22 23 24 25
   line row *
   line **
-  fill 14 12
-  fill 14 16
+  fill 14 12 fill 14 16
   line **
+  gram
+
+
+def amb2 : Puzzle 2 2 := nonogram from solution
+  ×■
+  ■×
+
+example : amb2.Solvable :=
+  nono
+  fill 1 1
+  line **
+  gram
+
+def amb3_Sub : Puzzle 3 3 := nonogram from solution
+  ×××
+  ×■×
+  ××■
+
+example : amb3_Sub.Solvable :=
+  nono
+  line **
+  fill 2 2
+  line **
+  gram
+
+def amb3_Ann : Puzzle 3 3 := nonogram from clues
+  rows: 1 1 1
+  cols: 1 1 1
+
+def uniqueButLineStalled : Puzzle 5 5 := nonogram from solution
+  ■■××■
+  ××■×■
+  ××■×■
+  ××■××
+  ■■×××
+
+example : uniqueButLineStalled.Solvable :=
+  nono
+  line **
+
+  weave 5 1
   gram
