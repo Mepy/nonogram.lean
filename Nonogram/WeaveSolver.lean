@@ -37,6 +37,19 @@ theorem solve_sound
     result.board.Compatible solution := by
   exact Optimized.solve_sound hSolve hSatisfies hCompatible
 
+/-- A compatible complete solution guarantees that the default weave succeeds. -/
+theorem solve_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    (coordinates : List (Coordinate rows cols))
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists result,
+      solve puzzle oldBoard coordinates = .ok result ∧
+        result.board.Compatible solution :=
+  Optimized.solve_exists_sound puzzle oldBoard coordinates hSatisfies hCompatible
+
 end WeaveSolver
 
 end Nonogram

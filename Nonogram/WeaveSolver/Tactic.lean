@@ -27,11 +27,9 @@ private def report (result : Result rows cols) : String :=
     disposition
 
 /-- Elaborate and execute one `weave` command. -/
-def elabWeave
-    (puzzle : Puzzle rows cols)
-    (board : Board rows cols)
+def elabCoordinates
     (coordinateStxs : Array (TSyntax `nonogramWeaveCoordinate)) :
-    TermElabM (Board rows cols × Option String) := do
+    TermElabM (List (Coordinate rows cols)) := do
   let coordinates ← coordinateStxs.mapM fun coordinateStx => do
     match coordinateStx with
     | `(nonogramWeaveCoordinate| $rowStx:num $colStx:num) =>
@@ -39,7 +37,15 @@ def elabWeave
         let col ← Nonogram.Tactic.getCoordinate "column" cols colStx
         pure { row, col }
     | _ => throwUnsupportedSyntax
-  match solve puzzle board coordinates.toList with
+  return coordinates.toList
+
+def elabWeave
+    (puzzle : Puzzle rows cols)
+    (board : Board rows cols)
+    (coordinateStxs : Array (TSyntax `nonogramWeaveCoordinate)) :
+    TermElabM (Board rows cols × Option String) := do
+  let coordinates ← elabCoordinates coordinateStxs
+  match solve puzzle board coordinates with
   | .error _ =>
       throwError "`weave` rejected every candidate; the current board contradicts the clues"
   | .ok result => return (result.board, some (report result))

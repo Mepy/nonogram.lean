@@ -134,6 +134,34 @@ theorem solve_sound
               rw [hExact.2.2.2]
               exact hCompatible
 
+/--
+The streaming weave solve succeeds whenever a compatible complete solution
+exists, and its result preserves that solution.
+-/
+theorem solve_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    (coordinates : List (Coordinate rows cols))
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists result,
+      solve puzzle oldBoard coordinates = .ok result ∧
+        result.board.Compatible solution := by
+  obtain ⟨naiveResult, hNaive, _⟩ :=
+    Naive.solve_exists_sound puzzle oldBoard coordinates hSatisfies hCompatible
+  have hNaiveExact := Naive.solve_exact puzzle oldBoard coordinates
+  rw [hNaive] at hNaiveExact
+  cases hOptimized : solve puzzle oldBoard coordinates with
+  | error error =>
+      have hOptimizedExact := solve_exact puzzle oldBoard coordinates
+      rw [hOptimized] at hOptimizedExact
+      simp only [Spec.ExactOutcome] at hNaiveExact hOptimizedExact
+      exact (hNaiveExact.1 hOptimizedExact).elim
+  | ok result =>
+      exact ⟨result, rfl,
+        solve_sound hOptimized hSatisfies hCompatible⟩
+
 end WeaveSolver.Optimized
 
 end Nonogram

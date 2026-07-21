@@ -115,7 +115,8 @@ private theorem solutionAssignment_mem_raw
       | filled => simp [solutionAssignment, assignmentBoardsRaw, hCell, ih]
       | crossed => simp [solutionAssignment, assignmentBoardsRaw, hCell, ih]
 
-private theorem exists_compatible_candidate
+/-- Every compatible puzzle solution contributes a surviving weave candidate. -/
+theorem exists_compatible_candidate
     (puzzle : Puzzle rows cols)
     (board : Board rows cols)
     (coordinates : List (Coordinate rows cols))
@@ -138,6 +139,40 @@ private theorem exists_compatible_candidate
   apply List.mem_filterMap.mpr
   refine ⟨assigned, hAssignedMem, ?_⟩
   simp [Spec.propagate, hFixedPoint]
+
+/--
+An exhaustive weave solve succeeds whenever a compatible complete puzzle
+solution exists, and the returned board preserves that solution.
+-/
+theorem solve_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    (coordinates : List (Coordinate rows cols))
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists result,
+      solve puzzle oldBoard coordinates = .ok result ∧
+        result.board.Compatible solution := by
+  obtain ⟨compatibleCandidate, hCandidateMem, hCandidateCompatible⟩ :=
+    exists_compatible_candidate puzzle oldBoard coordinates hSatisfies hCompatible
+  simp only [solve]
+  cases hCandidates : candidates puzzle oldBoard coordinates with
+  | nil =>
+      rw [hCandidates] at hCandidateMem
+      simp at hCandidateMem
+  | cons candidate rest =>
+      cases rest with
+      | nil =>
+          have hCandidate : compatibleCandidate = candidate := by
+            simpa [hCandidates] using hCandidateMem
+          subst compatibleCandidate
+          exact ⟨⟨candidate, 1, (assignmentBoards oldBoard coordinates).length,
+            true⟩, by simp, hCandidateCompatible⟩
+      | cons next tail =>
+          exact ⟨⟨oldBoard, (candidate :: next :: tail).length,
+            (assignmentBoards oldBoard coordinates).length, false⟩,
+            by simp, hCompatible⟩
 
 /--
 Every complete puzzle solution compatible with the input board remains

@@ -426,7 +426,7 @@ def exportLeanSource
     s!"def {name} : Puzzle {rows} {cols} := nonogram from clues\n" ++
     "  rows: " ++ String.intercalate " " rowClues ++ "\n" ++
     "  cols: " ++ String.intercalate " " colClues ++ "\n\n" ++
-    s!"theorem {name}_solvable : {name}.Solvable := nono\n" ++
+    s!"theorem {name}_solvable : {name}.Outcome := nono\n" ++
     String.intercalate "\n" (tactics ++ ["  gram"]) ++ "\n")
 
 /-- Command-line configuration. -/

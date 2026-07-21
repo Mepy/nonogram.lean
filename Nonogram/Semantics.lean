@@ -134,10 +134,22 @@ theorem satisfies_toPuzzle (solution : Solution rows cols) :
 
 end Solution
 
+namespace Board
+
+/-- Render a complete Boolean solution as a decided board. -/
+def ofSolution (solution : Solution rows cols) : Board rows cols where
+  get row column := if solution row column then .filled else .crossed
+
+end Board
+
 namespace Puzzle
 
 def Solvable (puzzle : Puzzle rows cols) : Prop :=
   exists solution : Solution rows cols, solution.Satisfies puzzle
+
+/-- A puzzle has no satisfying solution. -/
+def Unsolvable (puzzle : Puzzle rows cols) : Prop :=
+  Not puzzle.Solvable
 
 def UniquelySolvable (puzzle : Puzzle rows cols) : Prop :=
   exists solution : Solution rows cols,
@@ -148,6 +160,16 @@ def UniquelySolvable (puzzle : Puzzle rows cols) : Prop :=
 /-- A valid puzzle has well-formed clues and exactly one solution. -/
 def Valid (puzzle : Puzzle rows cols) : Prop :=
   And puzzle.WellFormed puzzle.UniquelySolvable
+
+/--
+The strongest conclusion produced by an interactive solve. The `solvable`
+case deliberately remains distinct from `unique`: manual assumptions can
+construct a witness without proving that every other solution is equal to it.
+-/
+inductive Outcome (puzzle : Puzzle rows cols) : Prop where
+  | unsolvable (proof : puzzle.Unsolvable)
+  | unique (proof : puzzle.UniquelySolvable)
+  | solvable (proof : puzzle.Solvable)
 
 end Puzzle
 

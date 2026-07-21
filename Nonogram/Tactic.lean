@@ -1,6 +1,7 @@
 import Lean
 import Nonogram.LineSolver.Tactic
 import Nonogram.WeaveSolver.Tactic
+import Nonogram.SolverStep.Soundness
 
 open Lean Elab Term Meta
 
@@ -57,8 +58,8 @@ private def getGoal (expectedType : Expr) : TermElabM Goal := do
   let expectedType ← instantiateMVars expectedType
   let fn := expectedType.getAppFn
   let args := expectedType.getAppArgs
-  unless fn.isConstOf ``Puzzle.Solvable && args.size == 3 do
-    throwError "`nono` can only prove a goal of the form `puzzle.Solvable`"
+  unless fn.isConstOf ``Puzzle.Outcome && args.size == 3 do
+    throwError "`nono` can only prove a goal of the form `puzzle.Outcome`"
   let some rows ← getNatValue? args[0]!
     | throwError "`nono` needs a concrete number of rows"
   let some cols ← getNatValue? args[1]!
@@ -122,6 +123,50 @@ private def solutionSyntax (cols : Nat) (cells : List Cell) : TermElabM (TSyntax
   let colsStx : TSyntax `term := ⟨Syntax.mkNatLit cols⟩
   `(fun r c => [$values,*].getD (r.val * $colsStx + c.val) false)
 
+private inductive OutcomeKind where
+  | unsolvable
+  | unique
+  | solvable
+
+private def natSyntax (value : Nat) : TSyntax `term :=
+  ⟨Syntax.mkNatLit value⟩
+
+private def targetSyntax
+    (target : LineSolver.Multi.Target rows cols) : TermElabM (TSyntax `term) := do
+  match target with
+  | .row row =>
+      let value := natSyntax row.val
+      `(LineSolver.Multi.Target.row ⟨$value, by decide⟩)
+  | .col col =>
+      let value := natSyntax col.val
+      `(LineSolver.Multi.Target.col ⟨$value, by decide⟩)
+
+private def coordinateSyntax
+    (coordinate : WeaveSolver.Coordinate rows cols) : TermElabM (TSyntax `term) := do
+  let row := natSyntax coordinate.row.val
+  let col := natSyntax coordinate.col.val
+  `(⟨⟨$row, by decide⟩, ⟨$col, by decide⟩⟩)
+
+private def solverStepSyntax
+    (step : SolverStep rows cols) : TermElabM (TSyntax `term) := do
+  match step with
+  | .targets targets =>
+      let targets ← targets.toArray.mapM targetSyntax
+      `(SolverStep.targets [$targets,*])
+  | .fixedPoint => `(SolverStep.fixedPoint)
+  | .weave coordinates =>
+      let coordinates ← coordinates.toArray.mapM coordinateSyntax
+      `(SolverStep.weave [$coordinates,*])
+  | .clear row col =>
+      let row := natSyntax row.val
+      let col := natSyntax col.val
+      `(SolverStep.clear ⟨$row, by decide⟩ ⟨$col, by decide⟩)
+
+private def solverStepsSyntax
+    (steps : List (SolverStep rows cols)) : TermElabM (TSyntax `term) := do
+  let steps ← steps.toArray.mapM solverStepSyntax
+  `([$steps,*])
+
 private def elabNono
     (steps : Array (TSyntax `nonogramStep))
     (nonoRef : Syntax)
@@ -133,57 +178,127 @@ private def elabNono
   -- Each edit replaces this functional board; no array-backed board state is maintained.
   let mut board : Board goal.rows goal.cols := Board.unknown
   let mut finished := false
+  let mut manualUsed := false
+  let mut contradiction := false
+  let mut soundSteps : List (SolverStep goal.rows goal.cols) := []
+  let mut outcome : Option (OutcomeKind × Solution goal.rows goal.cols) := none
   let mut previousRef := nonoRef
   showBoard goal puzzle board nonoRef
   for step in steps do
     if finished && !step.raw.isOfKind ``nonogramSeparator then
       throwErrorAt step "`gram` must be the final command in a `nono` block"
+    if contradiction && !finished &&
+        !step.raw.isOfKind ``nonogramSeparator && !step.raw.isOfKind ``nonogramGram then
+      throwErrorAt step "a sound contradiction was found; finish with `gram`"
     showBoardBetween goal puzzle board previousRef step
-    unless step.raw.isOfKind ``nonogramSeparator do
+    unless step.raw.isOfKind ``nonogramSeparator ||
+        step.raw.isOfKind ``nonogramGram do
       showBoard goal puzzle board step
     match step with
     | `(nonogramStep| ;) => pure ()
     | `(nonogramStep| fill $rowStx:num $colStx:num) =>
         let r ← getCoordinate "row" goal.rows rowStx
         let c ← getCoordinate "column" goal.cols colStx
+        manualUsed := true
+        soundSteps := []
         board := board.set r c .filled
         showBoard goal puzzle board step (some (setMessage .filled r.val c.val))
     | `(nonogramStep| cross $rowStx:num $colStx:num) =>
         let r ← getCoordinate "row" goal.rows rowStx
         let c ← getCoordinate "column" goal.cols colStx
+        manualUsed := true
+        soundSteps := []
         board := board.set r c .crossed
         showBoard goal puzzle board step (some (setMessage .crossed r.val c.val))
     | `(nonogramStep| clear $rowStx:num $colStx:num) =>
         let r ← getCoordinate "row" goal.rows rowStx
         let c ← getCoordinate "column" goal.cols colStx
         board := board.set r c .unknown
+        unless manualUsed do
+          soundSteps := soundSteps ++ [.clear r c]
         showBoard goal puzzle board step (some (setMessage .unknown r.val c.val))
     | `(nonogramStep| line $groups:nonogramStepLine*) =>
-        let (newBoard, report) ← LineSolver.Tactic.elabLine puzzle board groups
-        board := newBoard
-        showBoard goal puzzle board step report
+        let lineSteps ← LineSolver.Tactic.elabLineSteps groups
+        if manualUsed then
+          let (newBoard, report) ← LineSolver.Tactic.elabLine puzzle board groups
+          board := newBoard
+          showBoard goal puzzle board step report
+        else
+          match SolverStep.run puzzle board lineSteps with
+          | .error _ =>
+              contradiction := true
+              soundSteps := soundSteps ++ lineSteps
+              showBoard goal puzzle board step (some "Outcome candidate: no solution")
+          | .ok _ =>
+              let (newBoard, report) ← LineSolver.Tactic.elabLine puzzle board groups
+              board := newBoard
+              soundSteps := soundSteps ++ lineSteps
+              showBoard goal puzzle board step report
     | `(nonogramStep| weave $coordinates:nonogramWeaveCoordinate*) =>
-        let (newBoard, report) ← WeaveSolver.Tactic.elabWeave puzzle board coordinates
-        board := newBoard
-        showBoard goal puzzle board step report
+        let coordinateValues ← WeaveSolver.Tactic.elabCoordinates coordinates
+        let weaveStep : SolverStep goal.rows goal.cols := .weave coordinateValues
+        if manualUsed then
+          let (newBoard, report) ← WeaveSolver.Tactic.elabWeave puzzle board coordinates
+          board := newBoard
+          showBoard goal puzzle board step report
+        else
+          match SolverStep.run puzzle board [weaveStep] with
+          | .error _ =>
+              contradiction := true
+              soundSteps := soundSteps ++ [weaveStep]
+              showBoard goal puzzle board step (some "Outcome candidate: no solution")
+          | .ok _ =>
+              let (newBoard, report) ← WeaveSolver.Tactic.elabWeave puzzle board coordinates
+              board := newBoard
+              soundSteps := soundSteps ++ [weaveStep]
+              showBoard goal puzzle board step report
     | `(nonogramStep| gram) =>
-        let cells := cellsOfBoard board
-        let unknownCount : Nat := cells.foldl (fun count cell =>
-          if cell == .unknown then count + 1 else count) 0
-        unless unknownCount == 0 do
-          throwErrorAt step "cannot run `gram`: {unknownCount} cells are still unknown"
-        let solution : Solution goal.rows goal.cols := fun r c => board.get r c == .filled
-        unless decide (solution.Satisfies puzzle) do
-          throwErrorAt step "`gram` failed: the completed board does not satisfy the clues"
+        if contradiction then
+          outcome := some (.unsolvable, fun _ _ => false)
+          showBoard goal puzzle board step (some "Outcome: no solution")
+        else
+          let cells := cellsOfBoard board
+          let unknownCount : Nat := cells.foldl (fun count cell =>
+            if cell == .unknown then count + 1 else count) 0
+          unless unknownCount == 0 do
+            throwErrorAt step "cannot run `gram`: {unknownCount} cells are still unknown"
+          let solution : Solution goal.rows goal.cols :=
+            fun r c => board.get r c == .filled
+          unless decide (solution.Satisfies puzzle) do
+            throwErrorAt step "`gram` failed: the completed board does not satisfy the clues"
+          if manualUsed then
+            outcome := some (.solvable, solution)
+            showBoard goal puzzle board step (some "Outcome: solution exists")
+          else
+            outcome := some (.unique, solution)
+            showBoard goal puzzle board step (some "Outcome: unique solution")
         finished := true
     | _ => throwUnsupportedSyntax
     previousRef := step
   unless finished do
     throwError "a `nono` block must end with `gram`"
-  let solution ← solutionSyntax goal.cols (cellsOfBoard board)
-  let proof ← `(by
-    refine ⟨$solution, ?_⟩
-    native_decide)
+  let proof ← match outcome with
+  | some (.unsolvable, _) =>
+      let stepStx ← solverStepsSyntax soundSteps
+      `(by
+        apply Puzzle.Outcome.unsolvable
+        apply SolverStep.run_error_unsolvable (steps := $stepStx)
+        native_decide)
+  | some (.unique, _solution) =>
+      let solutionStx ← solutionSyntax goal.cols (cellsOfBoard board)
+      let stepStx ← solverStepsSyntax soundSteps
+      `(by
+        apply Puzzle.Outcome.unique
+        apply SolverStep.run_unique (steps := $stepStx) (solution := $solutionStx)
+        · native_decide
+        · native_decide)
+  | some (.solvable, _) =>
+      let solutionStx ← solutionSyntax goal.cols (cellsOfBoard board)
+      `(by
+        apply Puzzle.Outcome.solvable
+        refine ⟨$solutionStx, ?_⟩
+        native_decide)
+  | none => throwError "internal error: missing nonogram outcome"
   -- The generated proof is an implementation detail. Hiding its tactic info keeps
   -- Lean's default goal view from obscuring the board state shown by `nono`.
   let result ← withEnableInfoTree false <| elabTermEnsuringType proof expectedType

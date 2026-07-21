@@ -1,6 +1,7 @@
 import Lean
 import Nonogram.LineSolver.Multi
 import Nonogram.Tactic.Basic
+import Nonogram.SolverStep
 
 open Lean Elab Term Meta
 
@@ -31,6 +32,36 @@ syntax (name := nonogramLineSolver) "line" nonogramStepLine* : nonogramStep
 namespace LineSolver.Tactic
 
 open LineSolver.Multi
+
+/-- Elaborate line groups into the sound transcript operations they denote. -/
+def elabLineSteps
+    (groups : Array (TSyntax `nonogramStepLine)) :
+    TermElabM (List (SolverStep rows cols)) := do
+  let mut steps : List (SolverStep rows cols) := []
+  for group in groups do
+    match group with
+    | `(nonogramStepLine| $direction:ident $indexStxs:num*) =>
+        if direction.getId == `row then
+          let rows ← indexStxs.mapM (Nonogram.Tactic.getCoordinate "row" rows)
+          steps := steps ++ [.targets (rows.toList.map Target.row)]
+        else if direction.getId == `col then
+          let cols ← indexStxs.mapM (Nonogram.Tactic.getCoordinate "column" cols)
+          steps := steps ++ [.targets (cols.toList.map Target.col)]
+        else
+          throwErrorAt direction "expected `row` or `col` after `line`"
+    | `(nonogramStepLine| $direction:ident *) =>
+        if direction.getId == `row then
+          steps := steps ++ [.targets (allRows rows cols)]
+        else if direction.getId == `col then
+          steps := steps ++ [.targets (allCols rows cols)]
+        else
+          throwErrorAt direction "expected `row` or `col` after `line`"
+    | `(nonogramStepLine| *) =>
+        steps := steps ++ [.targets (allTargets rows cols)]
+    | `(nonogramStepLine| **) =>
+        steps := steps ++ [.fixedPoint]
+    | _ => throwUnsupportedSyntax
+  return steps
 
 private def lineSolverReport (messages : Array String) : Option String :=
   if messages.isEmpty then none else some (String.intercalate "\n" messages.toList)

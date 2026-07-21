@@ -95,7 +95,7 @@ def diagonal : Puzzle 2 2 where
   rowClues _ := [1]
   colClues _ := [1]
 
-theorem diagonal_solvable : diagonal.Solvable := nono
+theorem diagonal_outcome : diagonal.Outcome := nono
   fill 1 1
   cross 1 2
   cross 2 1
@@ -103,7 +103,7 @@ theorem diagonal_solvable : diagonal.Solvable := nono
   gram
 ```
 
-The theorem type `diagonal.Solvable` contains the concrete puzzle value, so all
+The theorem type `diagonal.Outcome` contains the concrete puzzle value, so all
 row and column clues are fixed before `nono` starts.
 
 `fill`, `cross`, and `clear` use 1-based row and column coordinates. Lean's
@@ -136,7 +136,7 @@ preserve every compatible puzzle solution.
 Commands may be separated by line breaks, semicolons, or both:
 
 ```lean
-example : diagonal.Solvable := nono;
+example : diagonal.Outcome := nono;
   line **;
   gram;
 ```

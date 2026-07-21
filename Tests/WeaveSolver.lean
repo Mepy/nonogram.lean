@@ -66,13 +66,19 @@ example :
     | .ok _ => false) = true := by
   native_decide
 
+/-- A sound solver contradiction is exported as an unsolvable outcome. -/
+example : contradictory.Outcome := nono
+  line row 1
+  line col *
+  gram
+
 def xPuzzle : Puzzle 3 3 := nonogram from solution
   #.#
   .#.
   #.#
 
 /-- The tactic parser accepts any number of `(row, column)` pairs. -/
-example : xPuzzle.Solvable := nono
+example : xPuzzle.Outcome := nono
   weave 1 1 1 2
   gram
 
