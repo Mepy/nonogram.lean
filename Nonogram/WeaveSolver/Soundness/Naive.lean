@@ -30,7 +30,6 @@ theorem candidates_eq_spec
     (coordinates : List (Coordinate rows cols)) :
     candidates puzzle board coordinates = Spec.candidates puzzle board coordinates := by
   rw [candidates, Spec.candidates, assignmentBoards_eq_spec]
-  rfl
 
 /-- The exhaustive weave implementation meets the behavioral specification. -/
 theorem solve_exact
@@ -138,7 +137,7 @@ private theorem exists_compatible_candidate
   refine ⟨candidate, ?_, hCandidateCompatible⟩
   apply List.mem_filterMap.mpr
   refine ⟨assigned, hAssignedMem, ?_⟩
-  simp [hFixedPoint]
+  simp [Spec.propagate, hFixedPoint]
 
 /--
 Every complete puzzle solution compatible with the input board remains

@@ -18,6 +18,11 @@ example :
 
 example :
     Spec.ExactOutcome ambiguous Board.unknown [topLeft]
+      (Optimized.solve ambiguous Board.unknown [topLeft]) :=
+  Optimized.solve_exact ambiguous Board.unknown [topLeft]
+
+example :
+    Spec.ExactOutcome ambiguous Board.unknown [topLeft]
       (solve ambiguous Board.unknown [topLeft]) :=
   solve_exact ambiguous Board.unknown [topLeft]
 
@@ -29,6 +34,15 @@ example
     (hSolve : solve ambiguous Board.unknown [topLeft] = .ok result) :
     result.board.Compatible candidateSolution :=
   solve_sound hSolve hSatisfies hCompatible
+
+example
+    {candidateSolution : Solution 2 2}
+    (hSatisfies : candidateSolution.Satisfies ambiguous)
+    (hCompatible : Board.unknown.Compatible candidateSolution)
+    {result : Result 2 2}
+    (hSolve : Optimized.solve ambiguous Board.unknown [topLeft] = .ok result) :
+    result.board.Compatible candidateSolution :=
+  Optimized.solve_sound hSolve hSatisfies hCompatible
 
 /-- Repeated coordinates do not create duplicate branches. -/
 example :

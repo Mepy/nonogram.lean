@@ -45,17 +45,25 @@ def assignmentBoards
   assignmentBoardsRaw board coordinates.eraseDups
 
 /--
+Run the reference full-board propagation for one assignment. `none` means the
+line solver found a contradiction.
+-/
+def propagate
+    (puzzle : Puzzle rows cols)
+    (board : Board rows cols) : Option (Board rows cols) :=
+  match solveToFixedPoint puzzle board with
+  | .error _ => none
+  | .ok (solved, _) => some solved
+
+/--
 The surviving line-propagation candidates. A branch survives exactly when
-full-board line propagation reaches a fixed point instead of a contradiction.
+reference propagation reaches a fixed point instead of a contradiction.
 -/
 def candidates
     (puzzle : Puzzle rows cols)
     (board : Board rows cols)
     (coordinates : List (Coordinate rows cols)) : List (Board rows cols) :=
-  (assignmentBoards board coordinates).filterMap fun candidate =>
-    match solveToFixedPoint puzzle candidate with
-    | .error _ => none
-    | .ok (solved, _) => some solved
+  (assignmentBoards board coordinates).filterMap (propagate puzzle)
 
 /-- A successful result exactly summarizes the reference branch search. -/
 def ExactResult

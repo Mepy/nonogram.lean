@@ -127,6 +127,11 @@ some row or column contradictory are discarded. If exactly one candidate
 survives, its complete line deductions become the current board; if several
 survive, the board remains unchanged and the InfoView report gives the count.
 For example, `weave 5 1 2 3` jointly probes cells `(5, 1)` and `(2, 3)`.
+The default implementation explores assignments with a streaming depth-first
+search and keeps only a constant-space zero/one/many survivor summary. The
+exhaustive list-based implementation remains available as `WeaveSolver.Naive`;
+both implementations are proved to satisfy the same exact outcome spec and to
+preserve every compatible puzzle solution.
 
 Commands may be separated by line breaks, semicolons, or both:
 

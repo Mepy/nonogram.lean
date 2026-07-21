@@ -31,10 +31,7 @@ def candidates
     (puzzle : Puzzle rows cols)
     (board : Board rows cols)
     (coordinates : List (Coordinate rows cols)) : List (Board rows cols) :=
-  (assignmentBoards board coordinates).filterMap fun candidate =>
-    match solveToFixedPoint puzzle candidate with
-    | .error _ => none
-    | .ok (solved, _) => some solved
+  (assignmentBoards board coordinates).filterMap (Spec.propagate puzzle)
 
 /--
 Exhaustively enumerate all assignments before testing each one with full-board
