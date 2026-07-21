@@ -11,6 +11,25 @@ def ambiguous : Puzzle 2 2 := nonogram from clues
 private def topLeft : Coordinate 2 2 :=
   { row := 0, col := 0 }
 
+example :
+    Spec.ExactOutcome ambiguous Board.unknown [topLeft]
+      (Naive.solve ambiguous Board.unknown [topLeft]) :=
+  Naive.solve_exact ambiguous Board.unknown [topLeft]
+
+example :
+    Spec.ExactOutcome ambiguous Board.unknown [topLeft]
+      (solve ambiguous Board.unknown [topLeft]) :=
+  solve_exact ambiguous Board.unknown [topLeft]
+
+example
+    {candidateSolution : Solution 2 2}
+    (hSatisfies : candidateSolution.Satisfies ambiguous)
+    (hCompatible : Board.unknown.Compatible candidateSolution)
+    {result : Result 2 2}
+    (hSolve : solve ambiguous Board.unknown [topLeft] = .ok result) :
+    result.board.Compatible candidateSolution :=
+  solve_sound hSolve hSatisfies hCompatible
+
 /-- Repeated coordinates do not create duplicate branches. -/
 example :
     (match solve ambiguous Board.unknown [topLeft, topLeft] with

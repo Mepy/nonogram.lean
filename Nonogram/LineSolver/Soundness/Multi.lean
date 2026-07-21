@@ -286,6 +286,145 @@ theorem solveToFixedPoint_refines
     newBoard.Refines oldBoard :=
   solveToFixedPointWithFuel_refines hSolve
 
+private theorem solve_exists_of_candidate
+    {clue : Clue}
+    {line : Line length Cell}
+    {candidate : Line length Bool}
+    (hSatisfies : Line.Satisfies clue candidate)
+    (hCompatible : line.Compatible candidate) :
+    exists result, LineSolver.solve clue line = some result := by
+  cases hSolve : LineSolver.solve clue line with
+  | some result => exact ⟨result, rfl⟩
+  | none =>
+      have hExact := LineSolver.solve_exact clue line
+      rw [hSolve] at hExact
+      rcases hExact with ⟨items, hEnumerates, hLength⟩
+      have hMem := (hEnumerates.2 candidate).mpr ⟨hSatisfies, hCompatible⟩
+      have hEmpty : items = [] := List.eq_nil_of_length_eq_zero hLength
+      rw [hEmpty] at hMem
+      simp at hMem
+
+/--
+If a complete puzzle solution is compatible with the input board, solving one
+target cannot report a contradiction and preserves that solution.
+-/
+theorem solveTarget_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    (target : Target rows cols)
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists newBoard solved,
+      solveTarget puzzle oldBoard target = some (newBoard, solved) ∧
+        newBoard.Compatible solution := by
+  cases target with
+  | row row =>
+      obtain ⟨result, hLine⟩ := solve_exists_of_candidate
+        (hSatisfies.row row) (fun col => hCompatible.cell row col)
+      change LineSolver.solve (puzzle.rowClues row) (oldBoard.row row) =
+        some result at hLine
+      let newBoard := oldBoard.replaceRow row result.line
+      let solved : SolvedTarget rows cols :=
+        ⟨Target.row row, result.candidateCount⟩
+      have hTarget :
+          solveTarget puzzle oldBoard (.row row) = some (newBoard, solved) := by
+        simp only [solveTarget, hLine, newBoard, solved]
+      exact ⟨newBoard, solved, hTarget,
+        solveTarget_sound hTarget hSatisfies hCompatible⟩
+  | col col =>
+      obtain ⟨result, hLine⟩ := solve_exists_of_candidate
+        (hSatisfies.col col) (fun row => hCompatible.cell row col)
+      change LineSolver.solve (puzzle.colClues col) (oldBoard.col col) =
+        some result at hLine
+      let newBoard := oldBoard.replaceCol col result.line
+      let solved : SolvedTarget rows cols :=
+        ⟨Target.col col, result.candidateCount⟩
+      have hTarget :
+          solveTarget puzzle oldBoard (.col col) = some (newBoard, solved) := by
+        simp only [solveTarget, hLine, newBoard, solved]
+      exact ⟨newBoard, solved, hTarget,
+        solveTarget_sound hTarget hSatisfies hCompatible⟩
+
+/--
+Any finite target sequence succeeds when a compatible complete puzzle solution
+exists, and its result remains compatible with that solution.
+-/
+theorem solveTargets_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    (targets : List (Target rows cols))
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists result,
+      solveTargets puzzle oldBoard targets = .ok result ∧
+        result.board.Compatible solution := by
+  induction targets generalizing oldBoard with
+  | nil => exact ⟨⟨oldBoard, []⟩, rfl, hCompatible⟩
+  | cons target targets ih =>
+      obtain ⟨nextBoard, solved, hTarget, hNextCompatible⟩ :=
+        solveTarget_exists_sound puzzle oldBoard target hSatisfies hCompatible
+      obtain ⟨rest, hRest, hFinalCompatible⟩ :=
+        ih nextBoard hNextCompatible
+      refine ⟨⟨rest.board, solved :: rest.solved⟩, ?_, hFinalCompatible⟩
+      simp [solveTargets, hTarget, hRest]
+
+/-- A full row-and-column pass succeeds whenever a compatible solution exists. -/
+theorem solveAll_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists result,
+      solveAll puzzle oldBoard = .ok result ∧ result.board.Compatible solution :=
+  solveTargets_exists_sound puzzle oldBoard (allTargets rows cols)
+    hSatisfies hCompatible
+
+private theorem solveToFixedPointWithFuel_exists_sound
+    (puzzle : Puzzle rows cols)
+    (fuel : Nat)
+    (oldBoard : Board rows cols)
+    (passes : Nat)
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists newBoard finalPasses,
+      solveToFixedPointWithFuel puzzle fuel oldBoard passes =
+        .ok (newBoard, finalPasses) ∧
+      newBoard.Compatible solution := by
+  induction fuel generalizing oldBoard passes with
+  | zero => exact ⟨oldBoard, passes, rfl, hCompatible⟩
+  | succ fuel ih =>
+      obtain ⟨result, hAll, hNextCompatible⟩ :=
+        solveAll_exists_sound puzzle oldBoard hSatisfies hCompatible
+      by_cases hEqual : boardsEqual result.board oldBoard = true
+      · refine ⟨result.board, passes + 1, ?_, hNextCompatible⟩
+        simp [solveToFixedPointWithFuel, hAll, hEqual]
+      · have hFalse : boardsEqual result.board oldBoard = false :=
+          Bool.eq_false_iff.mpr hEqual
+        obtain ⟨newBoard, finalPasses, hRest, hFinalCompatible⟩ :=
+          ih result.board (passes + 1) hNextCompatible
+        refine ⟨newBoard, finalPasses, ?_, hFinalCompatible⟩
+        simp [solveToFixedPointWithFuel, hAll, hFalse, hRest]
+
+/--
+Repeated full-board propagation cannot report a contradiction while a complete
+puzzle solution remains compatible, and its result preserves that solution.
+-/
+theorem solveToFixedPoint_exists_sound
+    (puzzle : Puzzle rows cols)
+    (oldBoard : Board rows cols)
+    {solution : Solution rows cols}
+    (hSatisfies : solution.Satisfies puzzle)
+    (hCompatible : oldBoard.Compatible solution) :
+    exists newBoard passes,
+      solveToFixedPoint puzzle oldBoard = .ok (newBoard, passes) ∧
+        newBoard.Compatible solution :=
+  solveToFixedPointWithFuel_exists_sound puzzle (rows * cols + 1) oldBoard 0
+    hSatisfies hCompatible
+
 end LineSolver.Multi
 
 end Nonogram
